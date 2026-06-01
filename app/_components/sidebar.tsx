@@ -7,6 +7,7 @@ const navItems = [
   { label: "Dashboard", href: "/" },
   { label: "Trades", href: "/trades" },
   { label: "Analytics", href: "/analytics" },
+  { label: "Risk Monitor", href: "/risk" },
   { label: "Import MT5", href: "/import-mt5" },
   { label: "Settings", href: "/settings" },
 ];

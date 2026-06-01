@@ -17,6 +17,7 @@ export type SetupMetric = {
 };
 
 export type TradingDataset = {
+  accountReport: Mt5AccountReport | null;
   kpis: Kpi[];
   equityCurve: EquityPoint[];
   monthlyPerformance: MonthlyPerformance[];
@@ -179,6 +180,7 @@ export function createTradingDataset({
   const setupMetrics = buildSetupMetrics(trades);
 
   return {
+    accountReport: report,
     kpis: buildKpis(trades, report),
     equityCurve: buildEquityCurve(trades, report, fallbackEquityCurve),
     monthlyPerformance: buildMonthlyPerformance(

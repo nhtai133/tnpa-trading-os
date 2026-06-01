@@ -5,6 +5,8 @@ import { EquityCurveChart } from "@/app/_components/equity-curve-chart";
 import { KpiCard } from "@/app/_components/kpi-card";
 import { MonthlyPerformanceChart } from "@/app/_components/monthly-performance-chart";
 import { RecentTradesTable } from "@/app/_components/recent-trades-table";
+import { buildRiskMetrics } from "@/app/_lib/risk-metrics";
+import { useRiskSettings } from "@/app/_lib/use-risk-settings";
 import { useTradingDataset } from "@/app/_lib/use-trading-dataset";
 import type {
   EquityPoint,
@@ -49,6 +51,35 @@ function SetupPerformanceCard({
   );
 }
 
+function DashboardRiskCard({
+  label,
+  value,
+  tone,
+  detail,
+}: {
+  label: string;
+  value: string;
+  tone: "positive" | "negative" | "neutral";
+  detail: string;
+}) {
+  const toneClass =
+    tone === "positive"
+      ? "bg-emerald-400/10 text-emerald-300"
+      : tone === "negative"
+        ? "bg-rose-400/10 text-rose-300"
+        : "bg-amber-400/10 text-amber-300";
+
+  return (
+    <section className="rounded-md border border-white/10 bg-[#0d121c] p-5 shadow-2xl shadow-black/20">
+      <div className="text-sm font-medium text-slate-400">{label}</div>
+      <div className="mt-3 text-2xl font-semibold text-white">{value}</div>
+      <div className={`mt-4 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${toneClass}`}>
+        {detail}
+      </div>
+    </section>
+  );
+}
+
 export function DashboardShell({
   fallbackEquityCurve,
   fallbackMonthlyPerformance,
@@ -60,13 +91,28 @@ export function DashboardShell({
   initialReport: Mt5AccountReport | null;
   initialTrades: Trade[];
 }) {
-  const { bestSetup, equityCurve, kpis, monthlyPerformance, recentTrades, worstSetup } =
+  const settings = useRiskSettings();
+  const {
+    accountReport,
+    bestSetup,
+    equityCurve,
+    kpis,
+    monthlyPerformance,
+    recentTrades,
+    tradeHistory,
+    worstSetup,
+  } =
     useTradingDataset({
       fallbackEquityCurve,
       fallbackMonthlyPerformance,
       initialReport,
       initialTrades,
     });
+  const risk = buildRiskMetrics({
+    report: accountReport,
+    settings,
+    trades: tradeHistory,
+  });
 
   return (
     <AppShell
@@ -85,7 +131,7 @@ export function DashboardShell({
       </section>
 
       {bestSetup && worstSetup ? (
-        <section className="mt-4 grid gap-4 lg:grid-cols-2">
+        <section className="mt-4 grid gap-4 xl:grid-cols-4">
           <SetupPerformanceCard
             label="Best Setup"
             setupTag={bestSetup.setupTag}
@@ -97,6 +143,30 @@ export function DashboardShell({
             setupTag={worstSetup.setupTag}
             netProfit={worstSetup.netProfit}
             trades={worstSetup.trades}
+          />
+          <DashboardRiskCard
+            label="FTMO Risk Status"
+            value={risk.riskLevel}
+            tone={
+              risk.riskLevel === "Safe"
+                ? "positive"
+                : risk.riskLevel === "Warning"
+                  ? "neutral"
+                  : "negative"
+            }
+            detail={`Daily ${risk.dailyLossUsage.toFixed(1)}% / Max ${risk.maxLossUsage.toFixed(1)}%`}
+          />
+          <DashboardRiskCard
+            label="Discipline Score"
+            value={`${risk.disciplineScore}/100`}
+            tone={
+              risk.disciplineScore >= 80
+                ? "positive"
+                : risk.disciplineScore >= 60
+                  ? "neutral"
+                  : "negative"
+            }
+            detail="FTMO control model"
           />
         </section>
       ) : null}

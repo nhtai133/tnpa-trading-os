@@ -62,3 +62,11 @@ export type Mt5AccountReport = {
   maxDrawdown: string;
   trades: Trade[];
 };
+
+export type RiskSettings = {
+  dailyLossLimitPercent: number;
+  maxLossLimitPercent: number;
+  profitTargetPercent: number;
+};
+
+export type RiskLevel = "Safe" | "Warning" | "Danger" | "Breach";
