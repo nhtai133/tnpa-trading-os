@@ -15,10 +15,24 @@ export type MonthlyPerformance = {
   pnl: number;
 };
 
+export const setupTags = [
+  "Breakout Trendline",
+  "Rectangle Range",
+  "Supply Demand",
+  "Elliott Wave",
+  "TD Setup 9",
+  "TD Countdown 13",
+  "Trading Range",
+  "Other",
+] as const;
+
+export type SetupTag = (typeof setupTags)[number];
+
 export type Trade = {
   id: string;
   symbol: string;
   setup: string;
+  setupTag: SetupTag;
   side: "Long" | "Short";
   date: string;
   session: "Asia" | "London" | "New York";

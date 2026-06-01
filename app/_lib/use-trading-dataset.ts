@@ -5,6 +5,12 @@ import {
   readStoredMt5Report,
   subscribeToStoredMt5Report,
 } from "@/app/_lib/mt5-local-storage";
+import {
+  getDefaultSetupTag,
+  readSetupTagOverrides,
+  subscribeToSetupTagOverrides,
+  type SetupTagOverrides,
+} from "@/app/_lib/setup-tag-storage";
 import { createTradingDataset } from "@/app/_lib/trading-metrics";
 import type {
   EquityPoint,
@@ -12,6 +18,8 @@ import type {
   Mt5AccountReport,
   Trade,
 } from "@/app/_lib/trading-types";
+
+const emptySetupTagOverrides: SetupTagOverrides = {};
 
 export function useTradingDataset({
   fallbackEquityCurve,
@@ -29,10 +37,21 @@ export function useTradingDataset({
     readStoredMt5Report,
     () => null,
   );
+  const setupTagOverrides = useSyncExternalStore(
+    subscribeToSetupTagOverrides,
+    readSetupTagOverrides,
+    () => emptySetupTagOverrides,
+  );
 
   return useMemo(() => {
     const report = storedReport ?? initialReport;
-    const trades = report?.trades ?? initialTrades;
+    const trades = (report?.trades ?? initialTrades).map((trade) => ({
+      ...trade,
+      setupTag:
+        setupTagOverrides[trade.id] ??
+        trade.setupTag ??
+        getDefaultSetupTag(trade.setup),
+    }));
 
     return createTradingDataset({
       fallbackEquityCurve,
@@ -45,6 +64,7 @@ export function useTradingDataset({
     fallbackMonthlyPerformance,
     initialReport,
     initialTrades,
+    setupTagOverrides,
     storedReport,
   ]);
 }

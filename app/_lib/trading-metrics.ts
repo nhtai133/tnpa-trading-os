@@ -3,14 +3,27 @@ import type {
   Kpi,
   MonthlyPerformance,
   Mt5AccountReport,
+  SetupTag,
   Trade,
 } from "@/app/_lib/trading-types";
+
+export type SetupMetric = {
+  setupTag: SetupTag;
+  trades: number;
+  winRate: number;
+  profitFactor: number;
+  netProfit: number;
+  averageRr: number;
+};
 
 export type TradingDataset = {
   kpis: Kpi[];
   equityCurve: EquityPoint[];
   monthlyPerformance: MonthlyPerformance[];
   recentTrades: Trade[];
+  setupMetrics: SetupMetric[];
+  bestSetup: SetupMetric | null;
+  worstSetup: SetupMetric | null;
   tradeHistory: Trade[];
 };
 
@@ -44,6 +57,25 @@ function calculateAverageRr(trades: Trade[]) {
   return trades.length === 0
     ? 0
     : trades.reduce((sum, trade) => sum + trade.rr, 0) / trades.length;
+}
+
+export function buildSetupMetrics(trades: Trade[]) {
+  const groups = new Map<SetupTag, Trade[]>();
+
+  trades.forEach((trade) => {
+    groups.set(trade.setupTag, [...(groups.get(trade.setupTag) ?? []), trade]);
+  });
+
+  return Array.from(groups.entries())
+    .map<SetupMetric>(([setupTag, group]) => ({
+      setupTag,
+      trades: group.length,
+      winRate: calculateWinRate(group),
+      profitFactor: calculateProfitFactor(group),
+      netProfit: group.reduce((sum, trade) => sum + trade.pnl, 0),
+      averageRr: calculateAverageRr(group),
+    }))
+    .sort((a, b) => b.netProfit - a.netProfit);
 }
 
 export function buildEquityCurve(
@@ -144,6 +176,8 @@ export function createTradingDataset({
   report: Mt5AccountReport | null;
   trades: Trade[];
 }): TradingDataset {
+  const setupMetrics = buildSetupMetrics(trades);
+
   return {
     kpis: buildKpis(trades, report),
     equityCurve: buildEquityCurve(trades, report, fallbackEquityCurve),
@@ -153,6 +187,9 @@ export function createTradingDataset({
       fallbackMonthlyPerformance,
     ),
     recentTrades: trades.slice(0, 5),
+    setupMetrics,
+    bestSetup: setupMetrics[0] ?? null,
+    worstSetup: setupMetrics.at(-1) ?? null,
     tradeHistory: trades,
   };
 }

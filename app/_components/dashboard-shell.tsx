@@ -10,8 +10,44 @@ import type {
   EquityPoint,
   MonthlyPerformance,
   Mt5AccountReport,
+  SetupTag,
   Trade,
 } from "@/app/_lib/trading-types";
+
+function formatMoney(value: number) {
+  const sign = value >= 0 ? "" : "-";
+  return `${sign}$${Math.abs(value).toLocaleString(undefined, {
+    maximumFractionDigits: 0,
+  })}`;
+}
+
+function SetupPerformanceCard({
+  label,
+  netProfit,
+  setupTag,
+  trades,
+}: {
+  label: string;
+  netProfit: number;
+  setupTag: SetupTag;
+  trades: number;
+}) {
+  return (
+    <section className="rounded-md border border-white/10 bg-[#0d121c] p-5 shadow-2xl shadow-black/20">
+      <div className="text-sm font-medium text-slate-400">{label}</div>
+      <div className="mt-3 text-xl font-semibold text-white">{setupTag}</div>
+      <div
+        className={`mt-4 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+          netProfit >= 0
+            ? "bg-emerald-400/10 text-emerald-300"
+            : "bg-rose-400/10 text-rose-300"
+        }`}
+      >
+        {formatMoney(netProfit)} - {trades} trades
+      </div>
+    </section>
+  );
+}
 
 export function DashboardShell({
   fallbackEquityCurve,
@@ -24,7 +60,7 @@ export function DashboardShell({
   initialReport: Mt5AccountReport | null;
   initialTrades: Trade[];
 }) {
-  const { equityCurve, kpis, monthlyPerformance, recentTrades } =
+  const { bestSetup, equityCurve, kpis, monthlyPerformance, recentTrades, worstSetup } =
     useTradingDataset({
       fallbackEquityCurve,
       fallbackMonthlyPerformance,
@@ -47,6 +83,23 @@ export function DashboardShell({
           <KpiCard key={kpi.label} kpi={kpi} />
         ))}
       </section>
+
+      {bestSetup && worstSetup ? (
+        <section className="mt-4 grid gap-4 lg:grid-cols-2">
+          <SetupPerformanceCard
+            label="Best Setup"
+            setupTag={bestSetup.setupTag}
+            netProfit={bestSetup.netProfit}
+            trades={bestSetup.trades}
+          />
+          <SetupPerformanceCard
+            label="Worst Setup"
+            setupTag={worstSetup.setupTag}
+            netProfit={worstSetup.netProfit}
+            trades={worstSetup.trades}
+          />
+        </section>
+      ) : null}
 
       <section className="mt-6 grid gap-6 xl:grid-cols-[1.35fr_0.9fr]">
         <EquityCurveChart data={equityCurve} />

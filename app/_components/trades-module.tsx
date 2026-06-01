@@ -1,24 +1,27 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { writeSetupTagOverride } from "@/app/_lib/setup-tag-storage";
 import { useTradingDataset } from "@/app/_lib/use-trading-dataset";
 import type {
   EquityPoint,
   MonthlyPerformance,
   Mt5AccountReport,
+  SetupTag,
   Trade,
 } from "@/app/_lib/trading-types";
+import { setupTags } from "@/app/_lib/trading-types";
 
 const pageSize = 8;
 
 type FilterState = {
   symbol: string;
-  setup: string;
+  setupTag: string;
   result: string;
   direction: string;
 };
 
-function uniqueValues(trades: Trade[], key: keyof Pick<Trade, "symbol" | "setup">) {
+function uniqueValues(trades: Trade[], key: keyof Pick<Trade, "symbol" | "setupTag">) {
   return Array.from(new Set(trades.map((trade) => trade[key]))).sort();
 }
 
@@ -79,7 +82,7 @@ export function TradesModule({
   const [query, setQuery] = useState("");
   const [filters, setFilters] = useState<FilterState>({
     symbol: "",
-    setup: "",
+    setupTag: "",
     result: "",
     direction: "",
   });
@@ -87,7 +90,10 @@ export function TradesModule({
   const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
 
   const symbols = useMemo(() => uniqueValues(tradeHistory, "symbol"), [tradeHistory]);
-  const setups = useMemo(() => uniqueValues(tradeHistory, "setup"), [tradeHistory]);
+  const setupTagOptions = useMemo(
+    () => uniqueValues(tradeHistory, "setupTag"),
+    [tradeHistory],
+  );
 
   const filteredTrades = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -95,7 +101,7 @@ export function TradesModule({
     return tradeHistory.filter((trade) => {
       const matchesQuery =
         !normalizedQuery ||
-        [trade.id, trade.symbol, trade.setup, trade.session]
+        [trade.id, trade.symbol, trade.setup, trade.setupTag, trade.session]
           .join(" ")
           .toLowerCase()
           .includes(normalizedQuery);
@@ -103,7 +109,7 @@ export function TradesModule({
       return (
         matchesQuery &&
         (!filters.symbol || trade.symbol === filters.symbol) &&
-        (!filters.setup || trade.setup === filters.setup) &&
+        (!filters.setupTag || trade.setupTag === filters.setupTag) &&
         (!filters.result || trade.result === filters.result) &&
         (!filters.direction || trade.side === filters.direction)
       );
@@ -147,10 +153,10 @@ export function TradesModule({
             onChange={(value) => updateFilter("symbol", value)}
           />
           <SelectFilter
-            label="Setup"
-            options={setups}
-            value={filters.setup}
-            onChange={(value) => updateFilter("setup", value)}
+            label="Setup Tag"
+            options={setupTagOptions}
+            value={filters.setupTag}
+            onChange={(value) => updateFilter("setupTag", value)}
           />
           <SelectFilter
             label="Result"
@@ -181,7 +187,7 @@ export function TradesModule({
             className="rounded-md border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-emerald-300/40 hover:text-white"
             onClick={() => {
               setQuery("");
-              setFilters({ symbol: "", setup: "", result: "", direction: "" });
+              setFilters({ symbol: "", setupTag: "", result: "", direction: "" });
               setPage(1);
             }}
           >
@@ -195,7 +201,7 @@ export function TradesModule({
               <tr>
                 <th className="px-5 py-4 font-semibold">Trade</th>
                 <th className="px-5 py-4 font-semibold">Symbol</th>
-                <th className="px-5 py-4 font-semibold">Setup</th>
+                <th className="px-5 py-4 font-semibold">Setup Tag</th>
                 <th className="px-5 py-4 font-semibold">Direction</th>
                 <th className="px-5 py-4 font-semibold">Session</th>
                 <th className="px-5 py-4 font-semibold">Entry</th>
@@ -226,7 +232,25 @@ export function TradesModule({
                     <td className="px-5 py-4 font-semibold text-white">
                       {trade.symbol}
                     </td>
-                    <td className="px-5 py-4">{trade.setup}</td>
+                    <td className="px-5 py-4">
+                      <select
+                        className="h-9 min-w-40 rounded-md border border-white/10 bg-[#090d15] px-2 text-xs font-semibold text-slate-200 outline-none transition focus:border-emerald-300/50"
+                        value={trade.setupTag}
+                        onChange={(event) => {
+                          writeSetupTagOverride(
+                            trade.id,
+                            event.target.value as SetupTag,
+                          );
+                        }}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        {setupTags.map((tag) => (
+                          <option key={tag} value={tag}>
+                            {tag}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
                     <td className="px-5 py-4">{trade.side}</td>
                     <td className="px-5 py-4">{trade.session}</td>
                     <td className="px-5 py-4">{trade.entry}</td>
@@ -297,7 +321,7 @@ export function TradesModule({
                   {selectedTrade.id}
                 </h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  {selectedTrade.symbol} · {selectedTrade.date}
+                  {selectedTrade.symbol} - {selectedTrade.date}
                 </p>
               </div>
               <button
@@ -310,7 +334,8 @@ export function TradesModule({
 
             <div className="mt-8 grid grid-cols-2 gap-3">
               {[
-                ["Setup", selectedTrade.setup],
+                ["Setup Tag", selectedTrade.setupTag],
+                ["Original Setup", selectedTrade.setup],
                 ["Direction", selectedTrade.side],
                 ["Session", selectedTrade.session],
                 ["Result", selectedTrade.result],

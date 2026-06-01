@@ -15,6 +15,7 @@ type GroupMetric = {
   winRate: number;
   profitFactor: number;
   pnl: number;
+  averageRr: number;
 };
 
 function money(value: number) {
@@ -48,7 +49,7 @@ function winRate(trades: Trade[]) {
 
 function groupMetrics(
   trades: Trade[],
-  key: keyof Pick<Trade, "symbol" | "setup" | "side">,
+  key: keyof Pick<Trade, "symbol" | "setupTag" | "side">,
 ) {
   const groups = new Map<string, Trade[]>();
 
@@ -63,6 +64,10 @@ function groupMetrics(
       winRate: winRate(group),
       profitFactor: profitFactor(group),
       pnl: group.reduce((sum, trade) => sum + trade.pnl, 0),
+      averageRr:
+        group.length === 0
+          ? 0
+          : group.reduce((sum, trade) => sum + trade.rr, 0) / group.length,
     }))
     .sort((a, b) => b.pnl - a.pnl);
 }
@@ -128,7 +133,7 @@ function RankingTable({
               <div className="mb-2 flex items-center justify-between gap-3 text-sm">
                 <span className="font-medium text-slate-200">{row.label}</span>
                 <span className="text-slate-400">
-                  {formatted} · {row.trades} trades
+                  {formatted} - {row.trades} trades
                 </span>
               </div>
               <div className="h-2 rounded-full bg-white/[0.06]">
@@ -140,6 +145,129 @@ function RankingTable({
             </div>
           );
         })}
+      </div>
+    </section>
+  );
+}
+
+function SetupMetricTable({
+  metric,
+  rows,
+  title,
+}: {
+  metric: "netProfit" | "averageRr" | "trades";
+  rows: GroupMetric[];
+  title: string;
+}) {
+  return (
+    <section className="rounded-md border border-white/10 bg-[#0d121c] p-5 shadow-2xl shadow-black/20">
+      <h2 className="text-base font-semibold text-white">{title}</h2>
+      <div className="mt-5 overflow-x-auto">
+        <table className="w-full min-w-[520px] text-left text-sm">
+          <thead className="text-xs uppercase tracking-[0.16em] text-slate-500">
+            <tr>
+              <th className="py-3 pr-4 font-semibold">Setup</th>
+              <th className="py-3 pr-4 font-semibold">Value</th>
+              <th className="py-3 pr-4 font-semibold">Trades</th>
+              <th className="py-3 pr-4 font-semibold">Win Rate</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/10">
+            {rows.map((row) => {
+              const value =
+                metric === "netProfit"
+                  ? money(row.pnl)
+                  : metric === "averageRr"
+                    ? `${row.averageRr.toFixed(2)}R`
+                    : row.trades.toLocaleString();
+
+              return (
+                <tr className="text-slate-300" key={row.label}>
+                  <td className="py-3 pr-4 font-semibold text-white">
+                    {row.label}
+                  </td>
+                  <td
+                    className={`py-3 pr-4 font-semibold ${
+                      metric === "netProfit" && row.pnl < 0
+                        ? "text-rose-300"
+                        : "text-emerald-300"
+                    }`}
+                  >
+                    {value}
+                  </td>
+                  <td className="py-3 pr-4">{row.trades}</td>
+                  <td className="py-3 pr-4">{percent(row.winRate)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+
+}
+
+function SetupLeaderboard({ rows }: { rows: GroupMetric[] }) {
+  return (
+    <section className="rounded-md border border-white/10 bg-[#0d121c] p-5 shadow-2xl shadow-black/20">
+      <h2 className="text-base font-semibold text-white">Setup Leaderboard</h2>
+      <div className="mt-5 space-y-3">
+        {rows.map((row, index) => (
+          <div
+            className="flex items-center justify-between rounded-md border border-white/10 bg-white/[0.03] px-4 py-3"
+            key={row.label}
+          >
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-md bg-emerald-400/10 text-sm font-semibold text-emerald-300">
+                {index + 1}
+              </div>
+              <div>
+                <div className="font-semibold text-white">{row.label}</div>
+                <div className="text-xs text-slate-500">
+                  {percent(row.winRate)} win rate - PF {row.profitFactor.toFixed(2)}
+                </div>
+              </div>
+            </div>
+            <div
+              className={`text-sm font-semibold ${
+                row.pnl >= 0 ? "text-emerald-300" : "text-rose-300"
+              }`}
+            >
+              {money(row.pnl)}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function SetupDistributionChart({ rows }: { rows: GroupMetric[] }) {
+  const maxTrades = Math.max(...rows.map((row) => row.trades), 1);
+
+  return (
+    <section className="rounded-md border border-white/10 bg-[#0d121c] p-5 shadow-2xl shadow-black/20">
+      <h2 className="text-base font-semibold text-white">
+        Setup Distribution
+      </h2>
+      <div className="mt-5 space-y-4">
+        {rows.map((row) => (
+          <div key={row.label}>
+            <div className="mb-2 flex items-center justify-between gap-3 text-sm">
+              <span className="font-medium text-slate-200">{row.label}</span>
+              <span className="text-slate-400">{row.trades} trades</span>
+            </div>
+            <div className="h-2 rounded-full bg-white/[0.06]">
+              <div
+                className="h-2 rounded-full bg-sky-400"
+                style={{
+                  width: `${Math.max(8, (row.trades / maxTrades) * 100)}%`,
+                }}
+              />
+            </div>
+          </div>
+        ))}
       </div>
     </section>
   );
@@ -205,14 +333,14 @@ export function AnalyticsModule({
   initialReport: Mt5AccountReport | null;
   initialTrades: Trade[];
 }) {
-  const { tradeHistory } = useTradingDataset({
+  const { setupMetrics, tradeHistory } = useTradingDataset({
     fallbackEquityCurve,
     fallbackMonthlyPerformance,
     initialReport,
     initialTrades,
   });
   const bySymbol = groupMetrics(tradeHistory, "symbol");
-  const bySetup = groupMetrics(tradeHistory, "setup");
+  const bySetup = groupMetrics(tradeHistory, "setupTag");
   const byDirection = groupMetrics(tradeHistory, "side");
   const bestTrade = tradeHistory.reduce((best, trade) =>
     trade.pnl > best.pnl ? trade : best,
@@ -241,12 +369,12 @@ export function AnalyticsModule({
         <MetricCard
           label="Best Trade"
           value={money(bestTrade.pnl)}
-          sublabel={`${bestTrade.symbol} · ${bestTrade.rr}R`}
+          sublabel={`${bestTrade.symbol} - ${bestTrade.rr}R`}
         />
         <MetricCard
           label="Worst Trade"
           value={money(worstTrade.pnl)}
-          sublabel={`${worstTrade.symbol} · ${worstTrade.rr}R`}
+          sublabel={`${worstTrade.symbol} - ${worstTrade.rr}R`}
         />
         <MetricCard
           label="Average RR"
@@ -285,6 +413,37 @@ export function AnalyticsModule({
           metric="profitFactor"
         />
         <RankingTable title="Win Rate by Setup" rows={bySetup} metric="winRate" />
+        <RankingTable
+          title="Profit Factor by Setup"
+          rows={bySetup}
+          metric="profitFactor"
+        />
+        <SetupMetricTable
+          title="Net Profit by Setup"
+          rows={bySetup}
+          metric="netProfit"
+        />
+        <SetupMetricTable
+          title="Average RR by Setup"
+          rows={bySetup}
+          metric="averageRr"
+        />
+        <SetupMetricTable
+          title="Trade Count by Setup"
+          rows={bySetup}
+          metric="trades"
+        />
+        <SetupLeaderboard
+          rows={setupMetrics.map((row) => ({
+            label: row.setupTag,
+            trades: row.trades,
+            winRate: row.winRate,
+            profitFactor: row.profitFactor,
+            pnl: row.netProfit,
+            averageRr: row.averageRr,
+          }))}
+        />
+        <SetupDistributionChart rows={bySetup} />
         <DirectionAnalysis rows={byDirection} />
       </section>
     </AppShell>
