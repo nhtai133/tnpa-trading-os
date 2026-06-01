@@ -3,6 +3,7 @@ import type {
   Kpi,
   MonthlyPerformance,
   Mt5AccountReport,
+  Playbook,
   SetupTag,
   Trade,
 } from "@/app/_lib/trading-types";
@@ -14,6 +15,15 @@ export type SetupMetric = {
   profitFactor: number;
   netProfit: number;
   averageRr: number;
+};
+
+export type PlaybookMetric = {
+  playbook: Playbook;
+  trades: number;
+  winRate: number;
+  profitFactor: number;
+  expectancy: number;
+  netProfit: number;
 };
 
 export type TradingDataset = {
@@ -30,6 +40,9 @@ export type TradingDataset = {
   setupMetrics: SetupMetric[];
   bestSetup: SetupMetric | null;
   worstSetup: SetupMetric | null;
+  playbookMetrics: PlaybookMetric[];
+  bestPlaybook: PlaybookMetric | null;
+  worstPlaybook: PlaybookMetric | null;
   tradeHistory: Trade[];
 };
 
@@ -86,6 +99,30 @@ export function buildSetupMetrics(trades: Trade[]) {
       netProfit: group.reduce((sum, trade) => sum + trade.pnl, 0),
       averageRr: calculateAverageRr(group),
     }))
+    .sort((a, b) => b.netProfit - a.netProfit);
+}
+
+export function buildPlaybookMetrics(trades: Trade[]) {
+  const closedTrades = closedTradesOnly(trades);
+  const groups = new Map<Playbook, Trade[]>();
+
+  closedTrades.forEach((trade) => {
+    groups.set(trade.playbook, [...(groups.get(trade.playbook) ?? []), trade]);
+  });
+
+  return Array.from(groups.entries())
+    .map<PlaybookMetric>(([playbook, group]) => {
+      const netProfit = group.reduce((sum, trade) => sum + trade.pnl, 0);
+
+      return {
+        playbook,
+        trades: group.length,
+        winRate: calculateWinRate(group),
+        profitFactor: calculateProfitFactor(group),
+        expectancy: group.length === 0 ? 0 : netProfit / group.length,
+        netProfit,
+      };
+    })
     .sort((a, b) => b.netProfit - a.netProfit);
 }
 
@@ -203,6 +240,7 @@ export function createTradingDataset({
     0,
   );
   const setupMetrics = buildSetupMetrics(trades);
+  const playbookMetrics = buildPlaybookMetrics(trades);
 
   return {
     accountReport: report,
@@ -222,6 +260,9 @@ export function createTradingDataset({
     setupMetrics,
     bestSetup: setupMetrics[0] ?? null,
     worstSetup: setupMetrics.at(-1) ?? null,
+    playbookMetrics,
+    bestPlaybook: playbookMetrics[0] ?? null,
+    worstPlaybook: playbookMetrics.at(-1) ?? null,
     tradeHistory: trades,
   };
 }

@@ -1,4 +1,5 @@
 import { loadMt5Report } from "@/app/_lib/mt5-html-parser";
+import { getDefaultPlaybook } from "@/app/_lib/playbook-storage";
 import { getDefaultSetupTag } from "@/app/_lib/setup-tag-storage";
 import {
   buildEquityCurve,
@@ -12,7 +13,10 @@ import type {
 } from "@/app/_lib/trading-types";
 export type { EquityPoint, Kpi, MonthlyPerformance, Trade } from "@/app/_lib/trading-types";
 
-const mockTradeHistory: Trade[] = [
+type TradeWithOptionalPlaybook = Omit<Trade, "playbook"> &
+  Partial<Pick<Trade, "playbook">>;
+
+const mockTradeHistory: TradeWithOptionalPlaybook[] = [
   {
     id: "TNPA-2491",
     symbol: "XAUUSD",
@@ -376,11 +380,16 @@ const mockTradeHistory: Trade[] = [
 ];
 
 export const importedMt5Report = loadMt5Report();
-export const tradeHistory: Trade[] = (
+const sourceTradeHistory: TradeWithOptionalPlaybook[] = (
   importedMt5Report?.trades ?? mockTradeHistory
-).map((trade) => ({
+);
+
+export const tradeHistory: Trade[] = sourceTradeHistory.map((trade) => ({
   ...trade,
   setupTag: trade.setupTag ?? getDefaultSetupTag(trade.setup),
+  playbook:
+    trade.playbook ??
+    getDefaultPlaybook(trade.setup, trade.setupTag ?? getDefaultSetupTag(trade.setup)),
 }));
 export const recentTrades: Trade[] = tradeHistory.slice(0, 5);
 

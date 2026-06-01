@@ -6,6 +6,7 @@ import {
   type ManualTradeInput,
   writeManualTrade,
 } from "@/app/_lib/manual-trade-storage";
+import { writePlaybookOverride } from "@/app/_lib/playbook-storage";
 import { writeSetupTagOverride } from "@/app/_lib/setup-tag-storage";
 import { writeTradeJournalOverride } from "@/app/_lib/trade-journal-storage";
 import { useTradingDataset } from "@/app/_lib/use-trading-dataset";
@@ -13,6 +14,7 @@ import type {
   EquityPoint,
   MonthlyPerformance,
   Mt5AccountReport,
+  Playbook,
   SetupTag,
   TradeJournal,
   Trade,
@@ -20,6 +22,7 @@ import type {
 import {
   emotionOptions,
   mistakeOptions,
+  playbooks,
   setupTags,
 } from "@/app/_lib/trading-types";
 
@@ -37,6 +40,7 @@ const initialManualTrade: ManualTradeInput = {
   profit: "",
   floatingPnl: "",
   setupTag: "Other",
+  playbook: "Other",
   entryReason: "",
   exitReason: "",
   lessonLearned: "",
@@ -45,11 +49,15 @@ const initialManualTrade: ManualTradeInput = {
 type FilterState = {
   symbol: string;
   setupTag: string;
+  playbook: string;
   result: string;
   direction: string;
 };
 
-function uniqueValues(trades: Trade[], key: keyof Pick<Trade, "symbol" | "setupTag">) {
+function uniqueValues(
+  trades: Trade[],
+  key: keyof Pick<Trade, "symbol" | "setupTag" | "playbook">,
+) {
   return Array.from(new Set(trades.map((trade) => trade[key]))).sort();
 }
 
@@ -197,6 +205,7 @@ function TradeReviewDrawer({
   trade: Trade;
 }) {
   const [setupTag, setSetupTag] = useState<SetupTag>(trade.setupTag);
+  const [playbook, setPlaybook] = useState<Playbook>(trade.playbook);
   const [draft, setDraft] = useState<TradeJournal>({
     entryScreenshot: trade.entryScreenshot,
     exitScreenshot: trade.exitScreenshot,
@@ -251,6 +260,7 @@ function TradeReviewDrawer({
             ["Risk Reward", `${trade.rr}R`],
             ["Net P/L", money(trade.pnl)],
             ["Floating P/L", money(trade.floatingPnl ?? 0)],
+            ["Playbook", trade.playbook],
             ["Original Setup", trade.setup],
           ].map(([label, value]) => (
             <div
@@ -273,6 +283,12 @@ function TradeReviewDrawer({
             options={[...setupTags]}
             value={setupTag}
             onChange={(value) => setSetupTag(value as SetupTag)}
+          />
+          <SelectFilter
+            label="Playbook"
+            options={[...playbooks]}
+            value={playbook}
+            onChange={(value) => setPlaybook(value as Playbook)}
           />
           <SelectFilter
             label="Emotion"
@@ -331,6 +347,7 @@ function TradeReviewDrawer({
             className="rounded-md bg-emerald-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300"
             onClick={() => {
               writeSetupTagOverride(trade.id, setupTag);
+              writePlaybookOverride(trade.id, playbook);
               writeTradeJournalOverride(trade.id, draft);
               onClose();
             }}
@@ -489,6 +506,12 @@ function CreateTradeDrawer({ onClose }: { onClose: () => void }) {
             onChange={(value) => updateDraft("setupTag", value)}
           />
           <SelectFilter
+            label="Playbook"
+            options={[...playbooks]}
+            value={draft.playbook}
+            onChange={(value) => updateDraft("playbook", value)}
+          />
+          <SelectFilter
             label="Emotion"
             options={[...emotionOptions]}
             value={draft.emotion ?? ""}
@@ -562,6 +585,7 @@ export function TradesModule({
   const [filters, setFilters] = useState<FilterState>({
     symbol: "",
     setupTag: "",
+    playbook: "",
     result: "",
     direction: "",
   });
@@ -574,6 +598,10 @@ export function TradesModule({
     () => uniqueValues(tradeHistory, "setupTag"),
     [tradeHistory],
   );
+  const playbookOptions = useMemo(
+    () => uniqueValues(tradeHistory, "playbook"),
+    [tradeHistory],
+  );
 
   const filteredTrades = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -581,7 +609,14 @@ export function TradesModule({
     return tradeHistory.filter((trade) => {
       const matchesQuery =
         !normalizedQuery ||
-        [trade.id, trade.symbol, trade.setup, trade.setupTag, trade.session]
+        [
+          trade.id,
+          trade.symbol,
+          trade.setup,
+          trade.setupTag,
+          trade.playbook,
+          trade.session,
+        ]
           .join(" ")
           .toLowerCase()
           .includes(normalizedQuery);
@@ -590,6 +625,7 @@ export function TradesModule({
         matchesQuery &&
         (!filters.symbol || trade.symbol === filters.symbol) &&
         (!filters.setupTag || trade.setupTag === filters.setupTag) &&
+        (!filters.playbook || trade.playbook === filters.playbook) &&
         (!filters.result || trade.result === filters.result) &&
         (!filters.direction || trade.side === filters.direction)
       );
@@ -623,7 +659,7 @@ export function TradesModule({
       }
     >
       <section className="rounded-md border border-white/10 bg-[#0d121c] p-5 shadow-2xl shadow-black/20">
-        <div className="grid gap-4 xl:grid-cols-[1.25fr_repeat(4,minmax(0,1fr))]">
+        <div className="grid gap-4 xl:grid-cols-[1.25fr_repeat(5,minmax(0,1fr))]">
           <label className="block">
             <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
               Search
@@ -649,6 +685,12 @@ export function TradesModule({
             options={setupTagOptions}
             value={filters.setupTag}
             onChange={(value) => updateFilter("setupTag", value)}
+          />
+          <SelectFilter
+            label="Playbook"
+            options={playbookOptions}
+            value={filters.playbook}
+            onChange={(value) => updateFilter("playbook", value)}
           />
           <SelectFilter
             label="Result"
@@ -679,7 +721,13 @@ export function TradesModule({
             className="rounded-md border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-emerald-300/40 hover:text-white"
             onClick={() => {
               setQuery("");
-              setFilters({ symbol: "", setupTag: "", result: "", direction: "" });
+              setFilters({
+                symbol: "",
+                setupTag: "",
+                playbook: "",
+                result: "",
+                direction: "",
+              });
               setPage(1);
             }}
           >
@@ -688,12 +736,13 @@ export function TradesModule({
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] text-left text-sm">
+          <table className="w-full min-w-[1120px] text-left text-sm">
             <thead className="bg-white/[0.03] text-xs uppercase tracking-[0.16em] text-slate-500">
               <tr>
                 <th className="px-5 py-4 font-semibold">Trade</th>
                 <th className="px-5 py-4 font-semibold">Symbol</th>
                 <th className="px-5 py-4 font-semibold">Setup Tag</th>
+                <th className="px-5 py-4 font-semibold">Playbook</th>
                 <th className="px-5 py-4 font-semibold">Direction</th>
                 <th className="px-5 py-4 font-semibold">Status</th>
                 <th className="px-5 py-4 font-semibold">Session</th>
@@ -706,7 +755,9 @@ export function TradesModule({
             </thead>
             <tbody className="divide-y divide-white/10">
               {paginatedTrades.map((trade) => {
-                const positive = trade.pnl >= 0;
+                const displayPnl =
+                  trade.status === "Open" ? trade.floatingPnl ?? 0 : trade.pnl;
+                const positive = displayPnl >= 0;
 
                 return (
                   <tr
@@ -744,6 +795,25 @@ export function TradesModule({
                         ))}
                       </select>
                     </td>
+                    <td className="px-5 py-4">
+                      <select
+                        className="h-9 min-w-48 rounded-md border border-white/10 bg-[#090d15] px-2 text-xs font-semibold text-slate-200 outline-none transition focus:border-emerald-300/50"
+                        value={trade.playbook}
+                        onChange={(event) => {
+                          writePlaybookOverride(
+                            trade.id,
+                            event.target.value as Playbook,
+                          );
+                        }}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        {playbooks.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
                     <td className="px-5 py-4">{trade.side}</td>
                     <td className="px-5 py-4">
                       <span
@@ -765,9 +835,7 @@ export function TradesModule({
                         positive ? "text-emerald-300" : "text-rose-300"
                       }`}
                     >
-                      {trade.status === "Open"
-                        ? money(trade.floatingPnl ?? 0)
-                        : money(trade.pnl)}
+                      {money(displayPnl)}
                     </td>
                     <td className="px-5 py-4">
                       <span

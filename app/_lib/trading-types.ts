@@ -28,6 +28,20 @@ export const setupTags = [
 
 export type SetupTag = (typeof setupTags)[number];
 
+export const playbooks = [
+  "London Breakout Trendline",
+  "NY Continuation",
+  "Rectangle Range",
+  "Supply Demand Reversal",
+  "Trading Range Reversal",
+  "TD9 Reversal",
+  "TD13 Reversal",
+  "Elliott Wave Continuation",
+  "Other",
+] as const;
+
+export type Playbook = (typeof playbooks)[number];
+
 export const emotionOptions = [
   "Calm",
   "Confident",
@@ -67,6 +81,7 @@ export type Trade = {
   symbol: string;
   setup: string;
   setupTag: SetupTag;
+  playbook: Playbook;
   status: "Open" | "Closed";
   side: "Long" | "Short";
   date: string;

@@ -1,5 +1,11 @@
 import { getDefaultSetupTag } from "@/app/_lib/setup-tag-storage";
-import type { SetupTag, Trade, TradeJournal } from "@/app/_lib/trading-types";
+import { getDefaultPlaybook } from "@/app/_lib/playbook-storage";
+import type {
+  Playbook,
+  SetupTag,
+  Trade,
+  TradeJournal,
+} from "@/app/_lib/trading-types";
 
 export type ManualTradeInput = TradeJournal & {
   status: "Open" | "Closed";
@@ -13,6 +19,7 @@ export type ManualTradeInput = TradeJournal & {
   profit: string;
   floatingPnl: string;
   setupTag: SetupTag;
+  playbook: Playbook;
 };
 
 export const manualTradesStorageKey = "tnpa.manual-trades.v1";
@@ -43,6 +50,12 @@ function sanitizeTrade(value: unknown): Trade | null {
     symbol: trade.symbol,
     setup: trade.setup ?? "Manual trade",
     setupTag: trade.setupTag ?? getDefaultSetupTag(trade.setup ?? "Manual trade"),
+    playbook:
+      trade.playbook ??
+      getDefaultPlaybook(
+        trade.setup ?? "Manual trade",
+        trade.setupTag ?? getDefaultSetupTag(trade.setup ?? "Manual trade"),
+      ),
     status,
     side: trade.side,
     date: trade.date ?? "",
@@ -114,6 +127,7 @@ export function writeManualTrade(input: ManualTradeInput) {
     symbol: input.symbol.trim().toUpperCase(),
     setup: "Manual trade",
     setupTag: input.setupTag,
+    playbook: input.playbook,
     status,
     side: input.side,
     date: input.closeTime || input.openTime,

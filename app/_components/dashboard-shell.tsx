@@ -12,7 +12,6 @@ import type {
   EquityPoint,
   MonthlyPerformance,
   Mt5AccountReport,
-  SetupTag,
   Trade,
 } from "@/app/_lib/trading-types";
 
@@ -26,18 +25,18 @@ function formatMoney(value: number) {
 function SetupPerformanceCard({
   label,
   netProfit,
-  setupTag,
+  name,
   trades,
 }: {
   label: string;
   netProfit: number;
-  setupTag: SetupTag;
+  name: string;
   trades: number;
 }) {
   return (
     <section className="rounded-md border border-white/10 bg-[#0d121c] p-5 shadow-2xl shadow-black/20">
       <div className="text-sm font-medium text-slate-400">{label}</div>
-      <div className="mt-3 text-xl font-semibold text-white">{setupTag}</div>
+      <div className="mt-3 text-xl font-semibold text-white">{name}</div>
       <div
         className={`mt-4 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
           netProfit >= 0
@@ -112,6 +111,7 @@ export function DashboardShell({
   const {
     accountReport,
     bestSetup,
+    bestPlaybook,
     closedNetProfit,
     equityCurve,
     floatingPnl,
@@ -121,6 +121,7 @@ export function DashboardShell({
     recentTrades,
     tradeHistory,
     worstSetup,
+    worstPlaybook,
   } =
     useTradingDataset({
       fallbackEquityCurve,
@@ -187,13 +188,13 @@ export function DashboardShell({
         <section className="mt-4 grid gap-4 xl:grid-cols-4">
           <SetupPerformanceCard
             label="Best Setup"
-            setupTag={bestSetup.setupTag}
+            name={bestSetup.setupTag}
             netProfit={bestSetup.netProfit}
             trades={bestSetup.trades}
           />
           <SetupPerformanceCard
             label="Worst Setup"
-            setupTag={worstSetup.setupTag}
+            name={worstSetup.setupTag}
             netProfit={worstSetup.netProfit}
             trades={worstSetup.trades}
           />
@@ -220,6 +221,23 @@ export function DashboardShell({
                   : "negative"
             }
             detail="FTMO control model"
+          />
+        </section>
+      ) : null}
+
+      {bestPlaybook && worstPlaybook ? (
+        <section className="mt-4 grid gap-4 xl:grid-cols-2">
+          <SetupPerformanceCard
+            label="Best Playbook"
+            name={bestPlaybook.playbook}
+            netProfit={bestPlaybook.netProfit}
+            trades={bestPlaybook.trades}
+          />
+          <SetupPerformanceCard
+            label="Worst Playbook"
+            name={worstPlaybook.playbook}
+            netProfit={worstPlaybook.netProfit}
+            trades={worstPlaybook.trades}
           />
         </section>
       ) : null}

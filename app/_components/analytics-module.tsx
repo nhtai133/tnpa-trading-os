@@ -16,6 +16,7 @@ type GroupMetric = {
   profitFactor: number;
   pnl: number;
   averageRr: number;
+  expectancy: number;
 };
 
 type JournalMetric = {
@@ -77,7 +78,7 @@ function groupJournalMetrics(
 
 function groupMetrics(
   trades: Trade[],
-  key: keyof Pick<Trade, "symbol" | "setupTag" | "side">,
+  key: keyof Pick<Trade, "symbol" | "setupTag" | "side" | "playbook">,
 ) {
   const groups = new Map<string, Trade[]>();
 
@@ -86,17 +87,22 @@ function groupMetrics(
   });
 
   return Array.from(groups.entries())
-    .map<GroupMetric>(([label, group]) => ({
-      label,
-      trades: group.length,
-      winRate: winRate(group),
-      profitFactor: profitFactor(group),
-      pnl: group.reduce((sum, trade) => sum + trade.pnl, 0),
-      averageRr:
-        group.length === 0
-          ? 0
-          : group.reduce((sum, trade) => sum + trade.rr, 0) / group.length,
-    }))
+    .map<GroupMetric>(([label, group]) => {
+      const pnl = group.reduce((sum, trade) => sum + trade.pnl, 0);
+
+      return {
+        label,
+        trades: group.length,
+        winRate: winRate(group),
+        profitFactor: profitFactor(group),
+        pnl,
+        averageRr:
+          group.length === 0
+            ? 0
+            : group.reduce((sum, trade) => sum + trade.rr, 0) / group.length,
+        expectancy: group.length === 0 ? 0 : pnl / group.length,
+      };
+    })
     .sort((a, b) => b.pnl - a.pnl);
 }
 
@@ -221,11 +227,13 @@ function JournalRankingTable({
 }
 
 function SetupMetricTable({
+  labelHeader = "Setup",
   metric,
   rows,
   title,
 }: {
-  metric: "netProfit" | "averageRr" | "trades";
+  labelHeader?: string;
+  metric: "netProfit" | "averageRr" | "expectancy" | "trades";
   rows: GroupMetric[];
   title: string;
 }) {
@@ -236,7 +244,7 @@ function SetupMetricTable({
         <table className="w-full min-w-[520px] text-left text-sm">
           <thead className="text-xs uppercase tracking-[0.16em] text-slate-500">
             <tr>
-              <th className="py-3 pr-4 font-semibold">Setup</th>
+              <th className="py-3 pr-4 font-semibold">{labelHeader}</th>
               <th className="py-3 pr-4 font-semibold">Value</th>
               <th className="py-3 pr-4 font-semibold">Trades</th>
               <th className="py-3 pr-4 font-semibold">Win Rate</th>
@@ -249,7 +257,9 @@ function SetupMetricTable({
                   ? money(row.pnl)
                   : metric === "averageRr"
                     ? `${row.averageRr.toFixed(2)}R`
-                    : row.trades.toLocaleString();
+                    : metric === "expectancy"
+                      ? money(row.expectancy)
+                      : row.trades.toLocaleString();
 
               return (
                 <tr className="text-slate-300" key={row.label}>
@@ -258,7 +268,8 @@ function SetupMetricTable({
                   </td>
                   <td
                     className={`py-3 pr-4 font-semibold ${
-                      metric === "netProfit" && row.pnl < 0
+                      (metric === "netProfit" && row.pnl < 0) ||
+                      (metric === "expectancy" && row.expectancy < 0)
                         ? "text-rose-300"
                         : "text-emerald-300"
                     }`}
@@ -412,6 +423,7 @@ export function AnalyticsModule({
   const analyticsTrades = closedTrades;
   const bySymbol = groupMetrics(analyticsTrades, "symbol");
   const bySetup = groupMetrics(analyticsTrades, "setupTag");
+  const byPlaybook = groupMetrics(analyticsTrades, "playbook");
   const byDirection = groupMetrics(analyticsTrades, "side");
   const byEmotion = groupJournalMetrics(analyticsTrades, "emotion");
   const byMistake = groupJournalMetrics(analyticsTrades, "mistake");
@@ -420,6 +432,8 @@ export function AnalyticsModule({
   ).length;
   const mostCommonEmotion = byEmotion.find((row) => row.label !== "Unreviewed");
   const mostCommonMistake = byMistake.find((row) => row.label !== "Unreviewed");
+  const bestPlaybook = byPlaybook[0] ?? null;
+  const worstPlaybook = byPlaybook.at(-1) ?? null;
   const bestTrade = analyticsTrades.reduce<Trade | null>(
     (best, trade) => (!best || trade.pnl > best.pnl ? trade : best),
     null,
@@ -500,6 +514,24 @@ export function AnalyticsModule({
           value={`${reviewedTrades}`}
           sublabel={`${analyticsTrades.length} closed trades`}
         />
+        <MetricCard
+          label="Best Playbook"
+          value={bestPlaybook?.label ?? "None"}
+          sublabel={
+            bestPlaybook
+              ? `${money(bestPlaybook.pnl)} - ${bestPlaybook.trades} trades`
+              : "No closed trades"
+          }
+        />
+        <MetricCard
+          label="Worst Playbook"
+          value={worstPlaybook?.label ?? "None"}
+          sublabel={
+            worstPlaybook
+              ? `${money(worstPlaybook.pnl)} - ${worstPlaybook.trades} trades`
+              : "No closed trades"
+          }
+        />
       </section>
 
       <section className="mt-6 grid gap-6 xl:grid-cols-2">
@@ -518,6 +550,34 @@ export function AnalyticsModule({
           title="Profit Factor by Setup"
           rows={bySetup}
           metric="profitFactor"
+        />
+        <RankingTable
+          title="Win Rate by Playbook"
+          rows={byPlaybook}
+          metric="winRate"
+        />
+        <RankingTable
+          title="Profit Factor by Playbook"
+          rows={byPlaybook}
+          metric="profitFactor"
+        />
+        <SetupMetricTable
+          title="Expectancy by Playbook"
+          labelHeader="Playbook"
+          rows={byPlaybook}
+          metric="expectancy"
+        />
+        <SetupMetricTable
+          title="Net Profit by Playbook"
+          labelHeader="Playbook"
+          rows={byPlaybook}
+          metric="netProfit"
+        />
+        <SetupMetricTable
+          title="Trade Count by Playbook"
+          labelHeader="Playbook"
+          rows={byPlaybook}
+          metric="trades"
         />
         <SetupMetricTable
           title="Net Profit by Setup"
@@ -542,6 +602,7 @@ export function AnalyticsModule({
             profitFactor: row.profitFactor,
             pnl: row.netProfit,
             averageRr: row.averageRr,
+            expectancy: row.trades === 0 ? 0 : row.netProfit / row.trades,
           }))}
         />
         <SetupDistributionChart rows={bySetup} />
