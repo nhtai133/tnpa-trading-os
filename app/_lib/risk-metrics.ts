@@ -23,7 +23,9 @@ export type RiskWarning = {
 
 export type RiskMetrics = {
   accountBalance: number;
+  closedNetProfit: number;
   equity: number;
+  floatingPnl: number;
   netProfit: number;
   maxDailyLoss: number;
   maxTotalDrawdown: number;
@@ -61,6 +63,10 @@ function winRate(trades: Trade[]) {
     ? 0
     : (trades.filter((trade) => trade.result === "Win").length / trades.length) *
         100;
+}
+
+function closedTradesOnly(trades: Trade[]) {
+  return trades.filter((trade) => trade.status !== "Open");
 }
 
 function maxConsecutiveLosses(trades: Trade[]) {
@@ -111,11 +117,17 @@ export function buildRiskMetrics({
   settings: RiskSettings;
   trades: Trade[];
 }): RiskMetrics {
+  const closedTrades = closedTradesOnly(trades);
+  const openPositions = trades.filter((trade) => trade.status === "Open");
+  const floatingPnl = openPositions.reduce(
+    (sum, trade) => sum + (trade.floatingPnl ?? 0),
+    0,
+  );
   const netProfit = report
     ? report.totalNetProfit
-    : trades.reduce((sum, trade) => sum + trade.pnl, 0);
+    : closedTrades.reduce((sum, trade) => sum + trade.pnl, 0);
   const accountBalance = report ? report.balance : 100000 + netProfit;
-  const equity = report ? report.equity : accountBalance;
+  const equity = report ? report.equity + floatingPnl : accountBalance + floatingPnl;
   const startingBalance = Math.max(1, accountBalance - netProfit);
   const maxDailyLoss = startingBalance * (settings.dailyLossLimitPercent / 100);
   const maxTotalDrawdown = startingBalance * (settings.maxLossLimitPercent / 100);
@@ -125,7 +137,7 @@ export function buildRiskMetrics({
   let peakEquity = startingBalance;
   let maxDrawdownAmount = 0;
 
-  trades
+  closedTrades
     .slice()
     .reverse()
     .forEach((trade) => {
@@ -143,7 +155,7 @@ export function buildRiskMetrics({
   );
   const grouped = new Map<string, Trade[]>();
 
-  trades.forEach((trade) => {
+  closedTrades.forEach((trade) => {
     const key = dateKey(trade);
     grouped.set(key, [...(grouped.get(key) ?? []), trade]);
   });
@@ -178,7 +190,7 @@ export function buildRiskMetrics({
     dailyPnl < 0 ? (Math.abs(dailyPnl) / maxDailyLoss) * 100 : 0;
   const maxLossUsage = (drawdownForUsage / maxTotalDrawdown) * 100;
   const profitTargetProgress = (netProfit / profitTarget) * 100;
-  const losingStreak = maxConsecutiveLosses(trades);
+  const losingStreak = maxConsecutiveLosses(closedTrades);
   const warnings: RiskWarning[] = [];
 
   if (dailyLossUsage >= 70) {
@@ -228,13 +240,13 @@ export function buildRiskMetrics({
     });
 
   const setupCounts = new Map<SetupTag, number>();
-  trades.forEach((trade) => {
+  closedTrades.forEach((trade) => {
     setupCounts.set(trade.setupTag, (setupCounts.get(trade.setupTag) ?? 0) + 1);
   });
   const largestSetupShare =
-    trades.length === 0
+    closedTrades.length === 0
       ? 0
-      : Math.max(...Array.from(setupCounts.values())) / trades.length;
+      : Math.max(...Array.from(setupCounts.values())) / closedTrades.length;
   const setupDisciplinePenalty = largestSetupShare < 0.35 ? 10 : 0;
   const score = Math.max(
     0,
@@ -251,7 +263,9 @@ export function buildRiskMetrics({
 
   return {
     accountBalance,
+    closedNetProfit: netProfit,
     equity,
+    floatingPnl,
     netProfit,
     maxDailyLoss,
     maxTotalDrawdown,

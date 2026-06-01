@@ -18,6 +18,13 @@ type GroupMetric = {
   averageRr: number;
 };
 
+type JournalMetric = {
+  label: string;
+  trades: number;
+  winRate: number;
+  profitFactor: number;
+};
+
 function money(value: number) {
   const sign = value >= 0 ? "+" : "-";
   return `${sign}$${Math.abs(value).toLocaleString()}`;
@@ -45,6 +52,27 @@ function winRate(trades: Trade[]) {
     ? 0
     : (trades.filter((trade) => trade.result === "Win").length / trades.length) *
         100;
+}
+
+function groupJournalMetrics(
+  trades: Trade[],
+  key: keyof Pick<Trade, "emotion" | "mistake">,
+) {
+  const groups = new Map<string, Trade[]>();
+
+  trades.forEach((trade) => {
+    const value = trade[key] ?? "Unreviewed";
+    groups.set(value, [...(groups.get(value) ?? []), trade]);
+  });
+
+  return Array.from(groups.entries())
+    .map<JournalMetric>(([label, group]) => ({
+      label,
+      trades: group.length,
+      winRate: winRate(group),
+      profitFactor: profitFactor(group),
+    }))
+    .sort((a, b) => b.trades - a.trades);
 }
 
 function groupMetrics(
@@ -139,6 +167,48 @@ function RankingTable({
               <div className="h-2 rounded-full bg-white/[0.06]">
                 <div
                   className="h-2 rounded-full bg-emerald-400"
+                  style={{ width: `${Math.max(8, (value / max) * 100)}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function JournalRankingTable({
+  metric,
+  rows,
+  title,
+}: {
+  metric: "winRate" | "profitFactor";
+  rows: JournalMetric[];
+  title: string;
+}) {
+  const max = Math.max(...rows.map((row) => row[metric]), 1);
+
+  return (
+    <section className="rounded-md border border-white/10 bg-[#0d121c] p-5 shadow-2xl shadow-black/20">
+      <h2 className="text-base font-semibold text-white">{title}</h2>
+      <div className="mt-5 space-y-4">
+        {rows.map((row) => {
+          const value = row[metric];
+          const formatted =
+            metric === "winRate" ? percent(value) : value.toFixed(2);
+
+          return (
+            <div key={row.label}>
+              <div className="mb-2 flex items-center justify-between gap-3 text-sm">
+                <span className="font-medium text-slate-200">{row.label}</span>
+                <span className="text-slate-400">
+                  {formatted} - {row.trades} trades
+                </span>
+              </div>
+              <div className="h-2 rounded-full bg-white/[0.06]">
+                <div
+                  className="h-2 rounded-full bg-sky-400"
                   style={{ width: `${Math.max(8, (value / max) * 100)}%` }}
                 />
               </div>
@@ -333,27 +403,43 @@ export function AnalyticsModule({
   initialReport: Mt5AccountReport | null;
   initialTrades: Trade[];
 }) {
-  const { setupMetrics, tradeHistory } = useTradingDataset({
+  const { closedTrades, setupMetrics } = useTradingDataset({
     fallbackEquityCurve,
     fallbackMonthlyPerformance,
     initialReport,
     initialTrades,
   });
-  const bySymbol = groupMetrics(tradeHistory, "symbol");
-  const bySetup = groupMetrics(tradeHistory, "setupTag");
-  const byDirection = groupMetrics(tradeHistory, "side");
-  const bestTrade = tradeHistory.reduce((best, trade) =>
-    trade.pnl > best.pnl ? trade : best,
+  const analyticsTrades = closedTrades;
+  const bySymbol = groupMetrics(analyticsTrades, "symbol");
+  const bySetup = groupMetrics(analyticsTrades, "setupTag");
+  const byDirection = groupMetrics(analyticsTrades, "side");
+  const byEmotion = groupJournalMetrics(analyticsTrades, "emotion");
+  const byMistake = groupJournalMetrics(analyticsTrades, "mistake");
+  const reviewedTrades = analyticsTrades.filter(
+    (trade) => trade.emotion || trade.mistake || trade.entryReason || trade.exitReason,
+  ).length;
+  const mostCommonEmotion = byEmotion.find((row) => row.label !== "Unreviewed");
+  const mostCommonMistake = byMistake.find((row) => row.label !== "Unreviewed");
+  const bestTrade = analyticsTrades.reduce<Trade | null>(
+    (best, trade) => (!best || trade.pnl > best.pnl ? trade : best),
+    null,
   );
-  const worstTrade = tradeHistory.reduce((worst, trade) =>
-    trade.pnl < worst.pnl ? trade : worst,
+  const worstTrade = analyticsTrades.reduce<Trade | null>(
+    (worst, trade) => (!worst || trade.pnl < worst.pnl ? trade : worst),
+    null,
   );
   const averageRr =
-    tradeHistory.reduce((sum, trade) => sum + trade.rr, 0) / tradeHistory.length;
+    analyticsTrades.length === 0
+      ? 0
+      : analyticsTrades.reduce((sum, trade) => sum + trade.rr, 0) /
+        analyticsTrades.length;
   const expectancy =
-    tradeHistory.reduce((sum, trade) => sum + trade.pnl, 0) / tradeHistory.length;
-  const consecutiveWins = maxConsecutive(tradeHistory, "Win");
-  const consecutiveLosses = maxConsecutive(tradeHistory, "Loss");
+    analyticsTrades.length === 0
+      ? 0
+      : analyticsTrades.reduce((sum, trade) => sum + trade.pnl, 0) /
+        analyticsTrades.length;
+  const consecutiveWins = maxConsecutive(analyticsTrades, "Win");
+  const consecutiveLosses = maxConsecutive(analyticsTrades, "Loss");
 
   return (
     <AppShell
@@ -368,13 +454,13 @@ export function AnalyticsModule({
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           label="Best Trade"
-          value={money(bestTrade.pnl)}
-          sublabel={`${bestTrade.symbol} - ${bestTrade.rr}R`}
+          value={bestTrade ? money(bestTrade.pnl) : "$0"}
+          sublabel={bestTrade ? `${bestTrade.symbol} - ${bestTrade.rr}R` : "No closed trades"}
         />
         <MetricCard
           label="Worst Trade"
-          value={money(worstTrade.pnl)}
-          sublabel={`${worstTrade.symbol} - ${worstTrade.rr}R`}
+          value={worstTrade ? money(worstTrade.pnl) : "$0"}
+          sublabel={worstTrade ? `${worstTrade.symbol} - ${worstTrade.rr}R` : "No closed trades"}
         />
         <MetricCard
           label="Average RR"
@@ -398,6 +484,21 @@ export function AnalyticsModule({
           label="Consecutive Losses"
           value={`${consecutiveLosses}`}
           sublabel="Longest losing streak"
+        />
+        <MetricCard
+          label="Most Common Mistake"
+          value={mostCommonMistake?.label ?? "None"}
+          sublabel={`${mostCommonMistake?.trades ?? 0} reviewed trades`}
+        />
+        <MetricCard
+          label="Most Common Emotion"
+          value={mostCommonEmotion?.label ?? "None"}
+          sublabel={`${mostCommonEmotion?.trades ?? 0} reviewed trades`}
+        />
+        <MetricCard
+          label="Reviewed Trades"
+          value={`${reviewedTrades}`}
+          sublabel={`${analyticsTrades.length} closed trades`}
         />
       </section>
 
@@ -444,6 +545,26 @@ export function AnalyticsModule({
           }))}
         />
         <SetupDistributionChart rows={bySetup} />
+        <JournalRankingTable
+          title="Win Rate by Emotion"
+          rows={byEmotion}
+          metric="winRate"
+        />
+        <JournalRankingTable
+          title="Profit Factor by Emotion"
+          rows={byEmotion}
+          metric="profitFactor"
+        />
+        <JournalRankingTable
+          title="Win Rate by Mistake"
+          rows={byMistake}
+          metric="winRate"
+        />
+        <JournalRankingTable
+          title="Profit Factor by Mistake"
+          rows={byMistake}
+          metric="profitFactor"
+        />
         <DirectionAnalysis rows={byDirection} />
       </section>
     </AppShell>

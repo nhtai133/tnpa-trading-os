@@ -95,6 +95,7 @@ function toTrade(cells: string[]): Trade | null {
     symbol: cells[2],
     setup: "MT5 imported",
     setupTag: "Other",
+    status: "Closed",
     side: cells[3].toLowerCase() === "buy" ? "Long" : "Short",
     date: formatMt5Date(cells[8]),
     session: inferSession(cells[8]),

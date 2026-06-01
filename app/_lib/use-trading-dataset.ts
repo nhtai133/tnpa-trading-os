@@ -6,11 +6,20 @@ import {
   subscribeToStoredMt5Report,
 } from "@/app/_lib/mt5-local-storage";
 import {
+  readManualTrades,
+  subscribeToManualTrades,
+} from "@/app/_lib/manual-trade-storage";
+import {
   getDefaultSetupTag,
   readSetupTagOverrides,
   subscribeToSetupTagOverrides,
   type SetupTagOverrides,
 } from "@/app/_lib/setup-tag-storage";
+import {
+  readTradeJournalOverrides,
+  subscribeToTradeJournalOverrides,
+  type TradeJournalOverrides,
+} from "@/app/_lib/trade-journal-storage";
 import { createTradingDataset } from "@/app/_lib/trading-metrics";
 import type {
   EquityPoint,
@@ -20,6 +29,8 @@ import type {
 } from "@/app/_lib/trading-types";
 
 const emptySetupTagOverrides: SetupTagOverrides = {};
+const emptyTradeJournalOverrides: TradeJournalOverrides = {};
+const emptyManualTrades: Trade[] = [];
 
 export function useTradingDataset({
   fallbackEquityCurve,
@@ -42,11 +53,23 @@ export function useTradingDataset({
     readSetupTagOverrides,
     () => emptySetupTagOverrides,
   );
+  const tradeJournalOverrides = useSyncExternalStore(
+    subscribeToTradeJournalOverrides,
+    readTradeJournalOverrides,
+    () => emptyTradeJournalOverrides,
+  );
+  const manualTrades = useSyncExternalStore(
+    subscribeToManualTrades,
+    readManualTrades,
+    () => emptyManualTrades,
+  );
 
   return useMemo(() => {
     const report = storedReport ?? initialReport;
-    const trades = (report?.trades ?? initialTrades).map((trade) => ({
+    const trades = [...manualTrades, ...(report?.trades ?? initialTrades)].map((trade) => ({
       ...trade,
+      ...tradeJournalOverrides[trade.id],
+      status: trade.status ?? "Closed",
       setupTag:
         setupTagOverrides[trade.id] ??
         trade.setupTag ??
@@ -64,7 +87,9 @@ export function useTradingDataset({
     fallbackMonthlyPerformance,
     initialReport,
     initialTrades,
+    manualTrades,
     setupTagOverrides,
     storedReport,
+    tradeJournalOverrides,
   ]);
 }

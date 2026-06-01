@@ -18,10 +18,15 @@ export type SetupMetric = {
 
 export type TradingDataset = {
   accountReport: Mt5AccountReport | null;
+  closedNetProfit: number;
+  closedTrades: Trade[];
+  floatingPnl: number;
   kpis: Kpi[];
   equityCurve: EquityPoint[];
   monthlyPerformance: MonthlyPerformance[];
   recentTrades: Trade[];
+  openPositions: Trade[];
+  openPositionsCount: number;
   setupMetrics: SetupMetric[];
   bestSetup: SetupMetric | null;
   worstSetup: SetupMetric | null;
@@ -39,6 +44,10 @@ function calculateWinRate(trades: Trade[]) {
   return trades.length === 0
     ? 0
     : (trades.filter((trade) => trade.result === "Win").length / trades.length) * 100;
+}
+
+function closedTradesOnly(trades: Trade[]) {
+  return trades.filter((trade) => trade.status !== "Open");
 }
 
 function calculateProfitFactor(trades: Trade[]) {
@@ -61,9 +70,10 @@ function calculateAverageRr(trades: Trade[]) {
 }
 
 export function buildSetupMetrics(trades: Trade[]) {
+  const closedTrades = closedTradesOnly(trades);
   const groups = new Map<SetupTag, Trade[]>();
 
-  trades.forEach((trade) => {
+  closedTrades.forEach((trade) => {
     groups.set(trade.setupTag, [...(groups.get(trade.setupTag) ?? []), trade]);
   });
 
@@ -84,13 +94,15 @@ export function buildEquityCurve(
   report: Mt5AccountReport | null,
   fallback: EquityPoint[],
 ) {
-  if (!report || trades.length === 0) {
+  const closedTrades = closedTradesOnly(trades);
+
+  if (!report || closedTrades.length === 0) {
     return fallback;
   }
 
   const startBalance = report.balance - report.totalNetProfit;
   let runningBalance = startBalance;
-  const points = trades.reduce<EquityPoint[]>((acc, trade) => {
+  const points = closedTrades.reduce<EquityPoint[]>((acc, trade) => {
     runningBalance += trade.pnl;
     acc.push({
       label: trade.date.split(",")[0],
@@ -107,12 +119,14 @@ export function buildMonthlyPerformance(
   report: Mt5AccountReport | null,
   fallback: MonthlyPerformance[],
 ) {
-  if (!report || trades.length === 0) {
+  const closedTrades = closedTradesOnly(trades);
+
+  if (!report || closedTrades.length === 0) {
     return fallback;
   }
 
   const months = new Map<string, number>();
-  trades.forEach((trade) => {
+  closedTrades.forEach((trade) => {
     const month = trade.date.split(" ")[0];
     months.set(month, (months.get(month) ?? 0) + trade.pnl);
   });
@@ -124,11 +138,13 @@ export function buildMonthlyPerformance(
 }
 
 export function buildKpis(trades: Trade[], report: Mt5AccountReport | null): Kpi[] {
+  const closedTrades = closedTradesOnly(trades);
   const netProfit =
-    report?.totalNetProfit ?? trades.reduce((sum, trade) => sum + trade.pnl, 0);
-  const winRate = calculateWinRate(trades);
-  const profitFactor = report?.profitFactor ?? calculateProfitFactor(trades);
-  const averageRr = calculateAverageRr(trades);
+    report?.totalNetProfit ??
+    closedTrades.reduce((sum, trade) => sum + trade.pnl, 0);
+  const winRate = calculateWinRate(closedTrades);
+  const profitFactor = report?.profitFactor ?? calculateProfitFactor(closedTrades);
+  const averageRr = calculateAverageRr(closedTrades);
 
   return [
     {
@@ -140,7 +156,7 @@ export function buildKpis(trades: Trade[], report: Mt5AccountReport | null): Kpi
     {
       label: "Win Rate",
       value: `${winRate.toFixed(1)}%`,
-      change: `${trades.length} closed trades`,
+      change: `${closedTrades.length} closed trades`,
       tone: "positive",
     },
     {
@@ -177,10 +193,22 @@ export function createTradingDataset({
   report: Mt5AccountReport | null;
   trades: Trade[];
 }): TradingDataset {
+  const closedTrades = closedTradesOnly(trades);
+  const openPositions = trades.filter((trade) => trade.status === "Open");
+  const closedNetProfit =
+    report?.totalNetProfit ??
+    closedTrades.reduce((sum, trade) => sum + trade.pnl, 0);
+  const floatingPnl = openPositions.reduce(
+    (sum, trade) => sum + (trade.floatingPnl ?? 0),
+    0,
+  );
   const setupMetrics = buildSetupMetrics(trades);
 
   return {
     accountReport: report,
+    closedNetProfit,
+    closedTrades,
+    floatingPnl,
     kpis: buildKpis(trades, report),
     equityCurve: buildEquityCurve(trades, report, fallbackEquityCurve),
     monthlyPerformance: buildMonthlyPerformance(
@@ -189,6 +217,8 @@ export function createTradingDataset({
       fallbackMonthlyPerformance,
     ),
     recentTrades: trades.slice(0, 5),
+    openPositions,
+    openPositionsCount: openPositions.length,
     setupMetrics,
     bestSetup: setupMetrics[0] ?? null,
     worstSetup: setupMetrics.at(-1) ?? null,

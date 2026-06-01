@@ -80,6 +80,23 @@ function DashboardRiskCard({
   );
 }
 
+function topJournalValue(
+  trades: Trade[],
+  key: keyof Pick<Trade, "emotion" | "mistake">,
+) {
+  const counts = new Map<string, number>();
+
+  trades.forEach((trade) => {
+    const value = trade[key];
+
+    if (value) {
+      counts.set(value, (counts.get(value) ?? 0) + 1);
+    }
+  });
+
+  return Array.from(counts.entries()).sort((a, b) => b[1] - a[1])[0] ?? null;
+}
+
 export function DashboardShell({
   fallbackEquityCurve,
   fallbackMonthlyPerformance,
@@ -95,9 +112,12 @@ export function DashboardShell({
   const {
     accountReport,
     bestSetup,
+    closedNetProfit,
     equityCurve,
+    floatingPnl,
     kpis,
     monthlyPerformance,
+    openPositionsCount,
     recentTrades,
     tradeHistory,
     worstSetup,
@@ -113,6 +133,16 @@ export function DashboardShell({
     settings,
     trades: tradeHistory,
   });
+  const reviewedTrades = tradeHistory.filter(
+    (trade) =>
+      trade.emotion ||
+      trade.mistake ||
+      trade.entryReason ||
+      trade.exitReason ||
+      trade.lessonLearned,
+  ).length;
+  const topMistake = topJournalValue(tradeHistory, "mistake");
+  const topEmotion = topJournalValue(tradeHistory, "emotion");
 
   return (
     <AppShell
@@ -128,6 +158,29 @@ export function DashboardShell({
         {kpis.map((kpi) => (
           <KpiCard key={kpi.label} kpi={kpi} />
         ))}
+      </section>
+
+      <section className="mt-4 grid gap-4 xl:grid-cols-3">
+        <DashboardRiskCard
+          label="Open Positions"
+          value={`${openPositionsCount}`}
+          tone={openPositionsCount > 0 ? "neutral" : "positive"}
+          detail="Running trades"
+        />
+        <DashboardRiskCard
+          label="Closed Net Profit"
+          value={formatMoney(closedNetProfit)}
+          tone={closedNetProfit >= 0 ? "positive" : "negative"}
+          detail="Closed trades only"
+        />
+        <DashboardRiskCard
+          label="Floating P/L"
+          value={formatMoney(floatingPnl)}
+          tone={
+            floatingPnl > 0 ? "positive" : floatingPnl < 0 ? "negative" : "neutral"
+          }
+          detail="Open positions"
+        />
       </section>
 
       {bestSetup && worstSetup ? (
@@ -170,6 +223,27 @@ export function DashboardShell({
           />
         </section>
       ) : null}
+
+      <section className="mt-4 grid gap-4 xl:grid-cols-3">
+        <DashboardRiskCard
+          label="Discipline Summary"
+          value={`${reviewedTrades}/${tradeHistory.length}`}
+          tone={reviewedTrades > 0 ? "positive" : "neutral"}
+          detail="Trades reviewed"
+        />
+        <DashboardRiskCard
+          label="Top Mistake"
+          value={topMistake?.[0] ?? "None"}
+          tone={topMistake ? "neutral" : "positive"}
+          detail={`${topMistake?.[1] ?? 0} tagged trades`}
+        />
+        <DashboardRiskCard
+          label="Top Emotion"
+          value={topEmotion?.[0] ?? "None"}
+          tone={topEmotion ? "neutral" : "positive"}
+          detail={`${topEmotion?.[1] ?? 0} tagged trades`}
+        />
+      </section>
 
       <section className="mt-6 grid gap-6 xl:grid-cols-[1.35fr_0.9fr]">
         <EquityCurveChart data={equityCurve} />

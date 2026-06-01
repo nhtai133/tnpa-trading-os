@@ -165,9 +165,14 @@ export function RiskModule({
         <MetricCard label="Account Balance" value={money(risk.accountBalance)} />
         <MetricCard label="Equity" value={money(risk.equity)} />
         <MetricCard
-          label="Net Profit"
-          value={signedMoney(risk.netProfit)}
-          tone={risk.netProfit >= 0 ? "text-emerald-300" : "text-rose-300"}
+          label="Closed Net Profit"
+          value={signedMoney(risk.closedNetProfit)}
+          tone={risk.closedNetProfit >= 0 ? "text-emerald-300" : "text-rose-300"}
+        />
+        <MetricCard
+          label="Floating P/L"
+          value={signedMoney(risk.floatingPnl)}
+          tone={risk.floatingPnl >= 0 ? "text-emerald-300" : "text-rose-300"}
         />
         <MetricCard label="Peak Equity" value={money(risk.peakEquity)} />
         <MetricCard label="Max Daily Loss" value={money(risk.maxDailyLoss)} />

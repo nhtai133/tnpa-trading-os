@@ -28,11 +28,46 @@ export const setupTags = [
 
 export type SetupTag = (typeof setupTags)[number];
 
+export const emotionOptions = [
+  "Calm",
+  "Confident",
+  "Fear",
+  "FOMO",
+  "Revenge",
+  "Greed",
+  "Hesitation",
+] as const;
+
+export type TradeEmotion = (typeof emotionOptions)[number];
+
+export const mistakeOptions = [
+  "Early Entry",
+  "Late Entry",
+  "No Confirmation",
+  "Overtrading",
+  "Risk Violation",
+  "Emotional Trade",
+  "Other",
+] as const;
+
+export type TradeMistake = (typeof mistakeOptions)[number];
+
+export type TradeJournal = {
+  entryScreenshot?: string;
+  exitScreenshot?: string;
+  entryReason?: string;
+  exitReason?: string;
+  emotion?: TradeEmotion;
+  mistake?: TradeMistake;
+  lessonLearned?: string;
+};
+
 export type Trade = {
   id: string;
   symbol: string;
   setup: string;
   setupTag: SetupTag;
+  status: "Open" | "Closed";
   side: "Long" | "Short";
   date: string;
   session: "Asia" | "London" | "New York";
@@ -40,8 +75,9 @@ export type Trade = {
   exit: number;
   rr: number;
   pnl: number;
+  floatingPnl?: number;
   result: "Win" | "Loss";
-};
+} & TradeJournal;
 
 export type Mt5AccountReport = {
   sourceFile: string;
