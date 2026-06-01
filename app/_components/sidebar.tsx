@@ -1,6 +1,19 @@
-const navItems = ["Dashboard", "Trades", "Analytics", "Import MT5", "Settings"];
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+const navItems = [
+  { label: "Dashboard", href: "/" },
+  { label: "Trades", href: "/trades" },
+  { label: "Analytics", href: "/analytics" },
+  { label: "Import MT5", href: "/import-mt5" },
+  { label: "Settings", href: "/settings" },
+];
 
 export function Sidebar() {
+  const pathname = usePathname();
+
   return (
     <aside className="hidden min-h-screen w-72 shrink-0 border-r border-white/10 bg-[#080b12]/95 px-5 py-6 lg:block">
       <div className="mb-10">
@@ -14,23 +27,23 @@ export function Sidebar() {
 
       <nav className="space-y-2">
         {navItems.map((item) => {
-          const active = item === "Dashboard";
+          const active = pathname === item.href;
 
           return (
-            <a
+            <Link
               className={`flex h-11 items-center justify-between rounded-md px-3 text-sm font-medium transition ${
                 active
                   ? "bg-emerald-400/12 text-emerald-200 ring-1 ring-emerald-300/20"
                   : "text-slate-400 hover:bg-white/[0.04] hover:text-slate-100"
               }`}
-              href="#"
-              key={item}
+              href={item.href}
+              key={item.href}
             >
-              <span>{item}</span>
+              <span>{item.label}</span>
               {active ? (
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
               ) : null}
-            </a>
+            </Link>
           );
         })}
       </nav>

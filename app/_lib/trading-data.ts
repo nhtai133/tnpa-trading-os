@@ -1,65 +1,338 @@
-export type Kpi = {
-  label: string;
-  value: string;
-  change: string;
-  tone: "positive" | "negative" | "neutral";
-};
+import { loadMt5Report } from "@/app/_lib/mt5-html-parser";
+import {
+  buildEquityCurve,
+  buildKpis,
+  buildMonthlyPerformance,
+} from "@/app/_lib/trading-metrics";
+import type {
+  EquityPoint,
+  MonthlyPerformance,
+  Trade,
+} from "@/app/_lib/trading-types";
+export type { EquityPoint, Kpi, MonthlyPerformance, Trade } from "@/app/_lib/trading-types";
 
-export type EquityPoint = {
-  label: string;
-  equity: number;
-};
-
-export type MonthlyPerformance = {
-  month: string;
-  pnl: number;
-};
-
-export type Trade = {
-  id: string;
-  symbol: string;
-  setup: string;
-  side: "Long" | "Short";
-  date: string;
-  rr: number;
-  pnl: number;
-  result: "Win" | "Loss";
-};
-
-export const kpis: Kpi[] = [
+const mockTradeHistory: Trade[] = [
   {
-    label: "Net Profit",
-    value: "$48,920",
-    change: "+18.4% YTD",
-    tone: "positive",
+    id: "TNPA-2491",
+    symbol: "XAUUSD",
+    setup: "London liquidity sweep",
+    side: "Long",
+    date: "May 29, 2026",
+    session: "London",
+    entry: 2326.4,
+    exit: 2340.8,
+    rr: 2.6,
+    pnl: 4280,
+    result: "Win",
   },
   {
-    label: "Win Rate",
-    value: "62.8%",
-    change: "+4.1% vs last 30d",
-    tone: "positive",
+    id: "TNPA-2488",
+    symbol: "EURUSD",
+    setup: "NY continuation",
+    side: "Short",
+    date: "May 28, 2026",
+    session: "New York",
+    entry: 1.0872,
+    exit: 1.0821,
+    rr: 1.9,
+    pnl: 2140,
+    result: "Win",
   },
   {
-    label: "Profit Factor",
-    value: "2.31",
-    change: "Gross win/loss",
-    tone: "neutral",
+    id: "TNPA-2482",
+    symbol: "NAS100",
+    setup: "Opening range failure",
+    side: "Short",
+    date: "May 27, 2026",
+    session: "New York",
+    entry: 18892,
+    exit: 18966,
+    rr: -1,
+    pnl: -1250,
+    result: "Loss",
   },
   {
-    label: "Average RR",
-    value: "1.84R",
-    change: "+0.22R vs plan",
-    tone: "positive",
+    id: "TNPA-2475",
+    symbol: "GBPJPY",
+    setup: "HTF order block",
+    side: "Long",
+    date: "May 24, 2026",
+    session: "London",
+    entry: 199.42,
+    exit: 200.31,
+    rr: 3.1,
+    pnl: 3860,
+    result: "Win",
   },
   {
-    label: "Max Drawdown",
-    value: "7.6%",
-    change: "-2.4% improved",
-    tone: "negative",
+    id: "TNPA-2468",
+    symbol: "US30",
+    setup: "Rejection at value high",
+    side: "Short",
+    date: "May 22, 2026",
+    session: "New York",
+    entry: 39220,
+    exit: 39314,
+    rr: -0.8,
+    pnl: -980,
+    result: "Loss",
+  },
+  {
+    id: "TNPA-2459",
+    symbol: "XAUUSD",
+    setup: "London liquidity sweep",
+    side: "Short",
+    date: "May 20, 2026",
+    session: "London",
+    entry: 2414.2,
+    exit: 2397.5,
+    rr: 2.3,
+    pnl: 3350,
+    result: "Win",
+  },
+  {
+    id: "TNPA-2447",
+    symbol: "USDJPY",
+    setup: "Asian range breakout",
+    side: "Long",
+    date: "May 17, 2026",
+    session: "Asia",
+    entry: 156.22,
+    exit: 156.84,
+    rr: 1.5,
+    pnl: 1420,
+    result: "Win",
+  },
+  {
+    id: "TNPA-2439",
+    symbol: "EURUSD",
+    setup: "NY continuation",
+    side: "Long",
+    date: "May 15, 2026",
+    session: "New York",
+    entry: 1.0744,
+    exit: 1.0708,
+    rr: -1,
+    pnl: -1120,
+    result: "Loss",
+  },
+  {
+    id: "TNPA-2431",
+    symbol: "NAS100",
+    setup: "Opening range failure",
+    side: "Long",
+    date: "May 13, 2026",
+    session: "New York",
+    entry: 18440,
+    exit: 18616,
+    rr: 2.1,
+    pnl: 2980,
+    result: "Win",
+  },
+  {
+    id: "TNPA-2418",
+    symbol: "GBPJPY",
+    setup: "HTF order block",
+    side: "Short",
+    date: "May 9, 2026",
+    session: "London",
+    entry: 197.9,
+    exit: 198.28,
+    rr: -0.7,
+    pnl: -860,
+    result: "Loss",
+  },
+  {
+    id: "TNPA-2404",
+    symbol: "US30",
+    setup: "Rejection at value high",
+    side: "Long",
+    date: "May 6, 2026",
+    session: "New York",
+    entry: 38680,
+    exit: 38892,
+    rr: 1.8,
+    pnl: 2440,
+    result: "Win",
+  },
+  {
+    id: "TNPA-2398",
+    symbol: "XAUUSD",
+    setup: "FVG mitigation",
+    side: "Long",
+    date: "May 3, 2026",
+    session: "London",
+    entry: 2298.6,
+    exit: 2311.2,
+    rr: 2.4,
+    pnl: 3720,
+    result: "Win",
+  },
+  {
+    id: "TNPA-2385",
+    symbol: "EURUSD",
+    setup: "FVG mitigation",
+    side: "Short",
+    date: "Apr 30, 2026",
+    session: "New York",
+    entry: 1.0661,
+    exit: 1.0689,
+    rr: -1,
+    pnl: -1040,
+    result: "Loss",
+  },
+  {
+    id: "TNPA-2372",
+    symbol: "USDJPY",
+    setup: "Asian range breakout",
+    side: "Short",
+    date: "Apr 26, 2026",
+    session: "Asia",
+    entry: 154.88,
+    exit: 154.17,
+    rr: 1.7,
+    pnl: 1880,
+    result: "Win",
+  },
+  {
+    id: "TNPA-2360",
+    symbol: "NAS100",
+    setup: "NY continuation",
+    side: "Long",
+    date: "Apr 23, 2026",
+    session: "New York",
+    entry: 18110,
+    exit: 18334,
+    rr: 2.8,
+    pnl: 4560,
+    result: "Win",
+  },
+  {
+    id: "TNPA-2348",
+    symbol: "GBPJPY",
+    setup: "London liquidity sweep",
+    side: "Short",
+    date: "Apr 19, 2026",
+    session: "London",
+    entry: 195.66,
+    exit: 194.81,
+    rr: 2,
+    pnl: 2320,
+    result: "Win",
+  },
+  {
+    id: "TNPA-2335",
+    symbol: "US30",
+    setup: "Opening range failure",
+    side: "Short",
+    date: "Apr 16, 2026",
+    session: "New York",
+    entry: 38110,
+    exit: 38200,
+    rr: -0.9,
+    pnl: -1180,
+    result: "Loss",
+  },
+  {
+    id: "TNPA-2321",
+    symbol: "XAUUSD",
+    setup: "HTF order block",
+    side: "Long",
+    date: "Apr 12, 2026",
+    session: "London",
+    entry: 2244.8,
+    exit: 2268.9,
+    rr: 3.4,
+    pnl: 5480,
+    result: "Win",
+  },
+  {
+    id: "TNPA-2307",
+    symbol: "EURUSD",
+    setup: "Rejection at value high",
+    side: "Short",
+    date: "Apr 8, 2026",
+    session: "New York",
+    entry: 1.0557,
+    exit: 1.0518,
+    rr: 1.6,
+    pnl: 1780,
+    result: "Win",
+  },
+  {
+    id: "TNPA-2294",
+    symbol: "USDJPY",
+    setup: "FVG mitigation",
+    side: "Long",
+    date: "Apr 4, 2026",
+    session: "Asia",
+    entry: 152.6,
+    exit: 152.14,
+    rr: -0.6,
+    pnl: -760,
+    result: "Loss",
+  },
+  {
+    id: "TNPA-2281",
+    symbol: "NAS100",
+    setup: "Opening range failure",
+    side: "Short",
+    date: "Mar 29, 2026",
+    session: "New York",
+    entry: 17844,
+    exit: 17692,
+    rr: 2.2,
+    pnl: 3160,
+    result: "Win",
+  },
+  {
+    id: "TNPA-2269",
+    symbol: "GBPJPY",
+    setup: "NY continuation",
+    side: "Long",
+    date: "Mar 24, 2026",
+    session: "New York",
+    entry: 193.21,
+    exit: 192.74,
+    rr: -1,
+    pnl: -1320,
+    result: "Loss",
+  },
+  {
+    id: "TNPA-2256",
+    symbol: "US30",
+    setup: "Rejection at value high",
+    side: "Short",
+    date: "Mar 20, 2026",
+    session: "New York",
+    entry: 37420,
+    exit: 37210,
+    rr: 2.1,
+    pnl: 2860,
+    result: "Win",
+  },
+  {
+    id: "TNPA-2242",
+    symbol: "XAUUSD",
+    setup: "London liquidity sweep",
+    side: "Long",
+    date: "Mar 15, 2026",
+    session: "London",
+    entry: 2186.1,
+    exit: 2175.7,
+    rr: -1,
+    pnl: -1460,
+    result: "Loss",
   },
 ];
 
-export const equityCurve: EquityPoint[] = [
+export const importedMt5Report = loadMt5Report();
+export const tradeHistory: Trade[] = importedMt5Report?.trades ?? mockTradeHistory;
+export const recentTrades: Trade[] = tradeHistory.slice(0, 5);
+
+export const kpis = buildKpis(tradeHistory, importedMt5Report);
+
+const mockEquityCurve: EquityPoint[] = [
   { label: "Jan", equity: 100000 },
   { label: "Feb", equity: 103450 },
   { label: "Mar", equity: 101980 },
@@ -74,7 +347,7 @@ export const equityCurve: EquityPoint[] = [
   { label: "Dec", equity: 148920 },
 ];
 
-export const monthlyPerformance: MonthlyPerformance[] = [
+const mockMonthlyPerformance: MonthlyPerformance[] = [
   { month: "Jan", pnl: 3450 },
   { month: "Feb", pnl: 6120 },
   { month: "Mar", pnl: -1470 },
@@ -89,55 +362,16 @@ export const monthlyPerformance: MonthlyPerformance[] = [
   { month: "Dec", pnl: 7540 },
 ];
 
-export const recentTrades: Trade[] = [
-  {
-    id: "TNPA-2491",
-    symbol: "XAUUSD",
-    setup: "London liquidity sweep",
-    side: "Long",
-    date: "May 29, 2026",
-    rr: 2.6,
-    pnl: 4280,
-    result: "Win",
-  },
-  {
-    id: "TNPA-2488",
-    symbol: "EURUSD",
-    setup: "NY continuation",
-    side: "Short",
-    date: "May 28, 2026",
-    rr: 1.9,
-    pnl: 2140,
-    result: "Win",
-  },
-  {
-    id: "TNPA-2482",
-    symbol: "NAS100",
-    setup: "Opening range failure",
-    side: "Short",
-    date: "May 27, 2026",
-    rr: -1,
-    pnl: -1250,
-    result: "Loss",
-  },
-  {
-    id: "TNPA-2475",
-    symbol: "GBPJPY",
-    setup: "HTF order block",
-    side: "Long",
-    date: "May 24, 2026",
-    rr: 3.1,
-    pnl: 3860,
-    result: "Win",
-  },
-  {
-    id: "TNPA-2468",
-    symbol: "US30",
-    setup: "Rejection at value high",
-    side: "Short",
-    date: "May 22, 2026",
-    rr: -0.8,
-    pnl: -980,
-    result: "Loss",
-  },
-];
+export const mockEquityCurveFallback = mockEquityCurve;
+export const mockMonthlyPerformanceFallback = mockMonthlyPerformance;
+export const equityCurve: EquityPoint[] = buildEquityCurve(
+  tradeHistory,
+  importedMt5Report,
+  mockEquityCurve,
+);
+export const monthlyPerformance: MonthlyPerformance[] =
+  buildMonthlyPerformance(
+    tradeHistory,
+    importedMt5Report,
+    mockMonthlyPerformance,
+  );

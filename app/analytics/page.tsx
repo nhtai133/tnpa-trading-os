@@ -1,4 +1,4 @@
-import { DashboardShell } from "@/app/_components/dashboard-shell";
+import { AnalyticsModule } from "@/app/_components/analytics-module";
 import {
   importedMt5Report,
   mockEquityCurveFallback,
@@ -6,9 +6,9 @@ import {
   tradeHistory,
 } from "@/app/_lib/trading-data";
 
-export default function Home() {
+export default function AnalyticsPage() {
   return (
-    <DashboardShell
+    <AnalyticsModule
       fallbackEquityCurve={mockEquityCurveFallback}
       fallbackMonthlyPerformance={mockMonthlyPerformanceFallback}
       initialReport={importedMt5Report}
