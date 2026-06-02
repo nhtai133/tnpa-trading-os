@@ -23,6 +23,7 @@ const navigationGroups = [
       { label: "Savings", href: "/savings" },
       { label: "Broker Accounts", href: "/broker-accounts" },
       { label: "Real Estate", href: "/real-estate" },
+      { label: "Archive History", href: "/archive-history" },
     ],
   },
   {

@@ -17,6 +17,7 @@ export const institutions = [
   "VPBank",
   "MB Bank",
   "BIDV",
+  "Vietcombank",
   "VCBS",
   "ACBS",
   "TCBS",
@@ -33,12 +34,28 @@ export const currencies = ["USD", "VND", "USDC", "Other"] as const;
 
 export type Currency = (typeof currencies)[number];
 
+export const archiveReasons = [
+  "Closed Account",
+  "Failed Challenge",
+  "Merged Portfolio",
+  "No Longer Used",
+  "Other",
+] as const;
+
+export type ArchiveReason = (typeof archiveReasons)[number];
+
+export type WealthStatus = "Active" | "Archived";
+
 export type WealthAccount = {
   id: string;
   name: string;
   institution: Institution;
   currency: Currency;
   balance: number;
+  status: WealthStatus;
+  archiveReason?: ArchiveReason;
+  archivedAt?: string;
+  accountType?: "Bank" | "Broker" | "Savings";
   notes?: string;
 };
 
@@ -49,6 +66,9 @@ export type WealthAsset = {
   institution: Institution;
   currency: Currency;
   currentValue: number;
+  status: WealthStatus;
+  archiveReason?: ArchiveReason;
+  archivedAt?: string;
   costBasis?: number;
   accountId?: string;
   notes?: string;

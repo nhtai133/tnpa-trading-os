@@ -1,15 +1,21 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { buildWealthSummary } from "@/app/_lib/wealth-metrics";
+import { buildWealthSummaryWithAccounts } from "@/app/_lib/wealth-metrics";
+import {
+  readStoredBankAccounts,
+  subscribeToBankAccounts,
+} from "@/app/_lib/bank-account-storage";
 import {
   readStoredWealthAssets,
   subscribeToWealthAssets,
 } from "@/app/_lib/wealth-storage";
-import type { WealthAsset } from "@/app/_lib/wealth-types";
+import type { WealthAccount, WealthAsset } from "@/app/_lib/wealth-types";
 
 const emptyAssets: WealthAsset[] = [];
+const emptyBankAccounts: WealthAccount[] = [];
 const wealthRows = [
+  { key: "bankCash", label: "Bank Cash", notes: "Cash held in bank accounts" },
   { key: "cash", label: "Cash", notes: "Cash and USDC balances" },
   { key: "savings", label: "Savings", notes: "Bank savings balances" },
   { key: "brokerCash", label: "Broker Cash", notes: "Broker settlement cash" },
@@ -61,9 +67,15 @@ export function WealthSummary() {
     readStoredWealthAssets,
     () => emptyAssets,
   );
+  const bankAccounts = useSyncExternalStore(
+    subscribeToBankAccounts,
+    readStoredBankAccounts,
+    () => emptyBankAccounts,
+  );
 
-  const summary = buildWealthSummary(assets);
+  const summary = buildWealthSummaryWithAccounts(assets, bankAccounts);
   const summaryValues: Record<WealthRowKey, number> = {
+    bankCash: summary.bankCash,
     cash: summary.cash,
     savings: summary.savings,
     brokerCash: summary.brokerCash,
@@ -81,6 +93,7 @@ export function WealthSummary() {
           tone={summary.totalNetWorth >= 0 ? "positive" : "negative"}
           value={formatMoney(summary.totalNetWorth)}
         />
+        <SummaryCard label="Bank Cash" value={formatMoney(summary.bankCash)} />
         <SummaryCard label="Cash" value={formatMoney(summary.cash)} />
         <SummaryCard label="Savings" value={formatMoney(summary.savings)} />
         <SummaryCard label="Stocks" value={formatMoney(summary.stocks)} />

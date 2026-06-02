@@ -1,10 +1,19 @@
-import type { WealthAsset } from "@/app/_lib/wealth-types";
+import {
+  archiveReasons,
+  type ArchiveReason,
+  type WealthAsset,
+  type WealthStatus,
+} from "@/app/_lib/wealth-types";
 
 export const wealthAssetsStorageKey = "tnpa.wealth-assets.v1";
 export const wealthAssetsUpdatedEvent = "tnpa:wealth-assets-updated";
 
 let lastRaw: string | null = null;
 let lastParsed: WealthAsset[] = [];
+
+export function isArchiveReason(value: string): value is ArchiveReason {
+  return archiveReasons.includes(value as ArchiveReason);
+}
 
 function sanitizeAsset(value: unknown): WealthAsset | null {
   if (!value || typeof value !== "object") {
@@ -21,6 +30,9 @@ function sanitizeAsset(value: unknown): WealthAsset | null {
     return null;
   }
 
+  const status: WealthStatus =
+    asset.status === "Archived" ? "Archived" : "Active";
+
   return {
     id: asset.id,
     name: asset.name,
@@ -28,6 +40,17 @@ function sanitizeAsset(value: unknown): WealthAsset | null {
     institution: asset.institution,
     currency: asset.currency,
     currentValue: asset.currentValue,
+    status,
+    archiveReason:
+      status === "Archived" &&
+      typeof asset.archiveReason === "string" &&
+      isArchiveReason(asset.archiveReason)
+        ? asset.archiveReason
+        : undefined,
+    archivedAt:
+      status === "Archived" && typeof asset.archivedAt === "string"
+        ? asset.archivedAt
+        : undefined,
     costBasis:
       typeof asset.costBasis === "number" && Number.isFinite(asset.costBasis)
         ? asset.costBasis

@@ -1,19 +1,27 @@
 "use client";
 
+import { useSyncExternalStore } from "react";
 import { AppShell } from "@/app/_components/app-shell";
 import { EquityCurveChart } from "@/app/_components/equity-curve-chart";
 import { KpiCard } from "@/app/_components/kpi-card";
 import { MonthlyPerformanceChart } from "@/app/_components/monthly-performance-chart";
 import { RecentTradesTable } from "@/app/_components/recent-trades-table";
+import {
+  readStoredBankAccounts,
+  subscribeToBankAccounts,
+} from "@/app/_lib/bank-account-storage";
 import { buildRiskMetrics } from "@/app/_lib/risk-metrics";
 import { useRiskSettings } from "@/app/_lib/use-risk-settings";
 import { useTradingDataset } from "@/app/_lib/use-trading-dataset";
+import type { WealthAccount } from "@/app/_lib/wealth-types";
 import type {
   EquityPoint,
   MonthlyPerformance,
   Mt5AccountReport,
   Trade,
 } from "@/app/_lib/trading-types";
+
+const emptyBankAccounts: WealthAccount[] = [];
 
 function formatMoney(value: number) {
   const sign = value >= 0 ? "" : "-";
@@ -79,6 +87,58 @@ function DashboardRiskCard({
   );
 }
 
+function CashByBankCard({
+  accounts,
+  totalCash,
+}: {
+  accounts: { id: string; institution: string; balance: number; currency: string; name: string }[];
+  totalCash: number;
+}) {
+  return (
+    <section className="rounded-md border border-white/10 bg-[#0d121c] p-5 shadow-2xl shadow-black/20">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="text-sm font-medium text-slate-400">Cash by Bank</div>
+          <div className="mt-3 text-2xl font-semibold text-white">
+            {formatMoney(totalCash)}
+          </div>
+        </div>
+        <div className="rounded-full bg-sky-400/10 px-2.5 py-1 text-xs font-semibold text-sky-300">
+          Bank balances
+        </div>
+      </div>
+
+      <div className="mt-5 space-y-3">
+        {accounts.length === 0 ? (
+          <div className="rounded-md border border-dashed border-white/10 bg-white/[0.03] p-4 text-sm text-slate-500">
+            No bank accounts saved yet.
+          </div>
+        ) : (
+          accounts.map((account) => (
+            <div
+              key={account.id}
+              className="flex items-center justify-between rounded-md border border-white/10 bg-white/[0.03] px-4 py-3"
+            >
+              <div className="min-w-0">
+                <div className="truncate font-semibold text-white">
+                  {account.name}
+                </div>
+                <div className="text-xs text-slate-500">{account.institution}</div>
+              </div>
+              <div className="text-right">
+                <div className="font-semibold text-slate-100">
+                  {formatMoney(account.balance)}
+                </div>
+                <div className="text-xs text-slate-500">{account.currency}</div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
 function topJournalValue(
   trades: Trade[],
   key: keyof Pick<Trade, "emotion" | "mistake">,
@@ -114,7 +174,6 @@ export function DashboardShell({
     bestPlaybook,
     closedNetProfit,
     equityCurve,
-    floatingPnl,
     kpis,
     monthlyPerformance,
     openPositionsCount,
@@ -129,11 +188,23 @@ export function DashboardShell({
       initialReport,
       initialTrades,
     });
+  const bankAccounts = useSyncExternalStore(
+    subscribeToBankAccounts,
+    readStoredBankAccounts,
+    () => emptyBankAccounts,
+  );
+  const activeBankAccounts = bankAccounts.filter(
+    (account) => account.status !== "Archived",
+  );
   const risk = buildRiskMetrics({
     report: accountReport,
     settings,
     trades: tradeHistory,
   });
+  const totalCash = activeBankAccounts.reduce(
+    (sum, account) => sum + account.balance,
+    0,
+  );
   const reviewedTrades = tradeHistory.filter(
     (trade) =>
       trade.emotion ||
@@ -169,19 +240,21 @@ export function DashboardShell({
           detail="Running trades"
         />
         <DashboardRiskCard
+          label="Total Cash"
+          value={formatMoney(totalCash)}
+          tone={totalCash >= 0 ? "positive" : "negative"}
+          detail="Bank balances"
+        />
+        <DashboardRiskCard
           label="Closed Net Profit"
           value={formatMoney(closedNetProfit)}
           tone={closedNetProfit >= 0 ? "positive" : "negative"}
           detail="Closed trades only"
         />
-        <DashboardRiskCard
-          label="Floating P/L"
-          value={formatMoney(floatingPnl)}
-          tone={
-            floatingPnl > 0 ? "positive" : floatingPnl < 0 ? "negative" : "neutral"
-          }
-          detail="Open positions"
-        />
+      </section>
+
+      <section className="mt-4">
+        <CashByBankCard accounts={activeBankAccounts} totalCash={totalCash} />
       </section>
 
       {bestSetup && worstSetup ? (
