@@ -3,100 +3,83 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const navigationGroups = [
-  {
-    label: "TRADING",
-    items: [
-      { label: "Dashboard", href: "/" },
-      { label: "Trades", href: "/trades" },
-      { label: "Analytics", href: "/analytics" },
-      { label: "Risk Monitor", href: "/risk" },
-      { label: "Import MT5", href: "/import-mt5" },
-    ],
-  },
-  {
-    label: "WEALTH",
-    items: [
-      { label: "Net Worth", href: "/net-worth" },
-      { label: "Portfolio", href: "/portfolio" },
-      { label: "Bank Accounts", href: "/bank-accounts" },
-      { label: "Savings", href: "/savings" },
-      { label: "Broker Accounts", href: "/broker-accounts" },
-      { label: "Real Estate", href: "/real-estate" },
-      { label: "Archive History", href: "/archive-history" },
-    ],
-  },
-  {
-    label: "SYSTEM",
-    items: [{ label: "Settings", href: "/settings" }],
-  },
+type NavItem = {
+  href: string;
+  label: string;
+  marker: string;
+};
+
+const tradingItems: NavItem[] = [
+  { href: "/trading", label: "Trading Dashboard", marker: "TD" },
+  { href: "/trades", label: "Trades", marker: "TR" },
+  { href: "/analytics", label: "Analytics", marker: "AN" },
+  { href: "/risk", label: "Risk Monitor", marker: "RM" },
+  { href: "/import-mt5", label: "Import MT5", marker: "MT" },
 ];
 
-export function Sidebar() {
+const wealthItems: NavItem[] = [
+  { href: "/wealth", label: "Wealth Dashboard", marker: "WD" },
+  { href: "/net-worth", label: "Net Worth", marker: "NW" },
+  { href: "/portfolio", label: "Portfolio", marker: "PF" },
+  { href: "/bank-accounts", label: "Bank Accounts", marker: "BA" },
+  { href: "/savings", label: "Savings", marker: "SV" },
+  { href: "/broker-accounts", label: "Broker Accounts", marker: "BR" },
+  { href: "/real-estate", label: "Real Estate", marker: "RE" },
+  { href: "/archive-history", label: "Archive History", marker: "AH" },
+];
+
+const systemItems: NavItem[] = [{ href: "/settings", label: "Settings", marker: "ST" }];
+
+function SidebarSection({ title, items }: { title: string; items: NavItem[] }) {
   const pathname = usePathname();
 
-  function isActive(href: string) {
-    return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
-  }
-
   return (
-    <aside className="hidden min-h-screen w-72 shrink-0 border-r border-white/10 bg-[#080b12]/95 px-5 py-6 lg:block">
-      <div className="mb-10">
-        <div className="text-xs font-semibold uppercase tracking-[0.32em] text-emerald-300">
-          TNPA
-        </div>
-        <div className="mt-2 text-2xl font-semibold text-white">
-          Trading OS
-        </div>
+    <div className="space-y-2">
+      <div className="px-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-500">{title}</div>
+      <div className="space-y-1">
+        {items.map((item) => {
+          const active = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={[
+                "flex items-center gap-3 rounded-lg border px-3 py-2 text-sm transition",
+                active
+                  ? "border-cyan-500/25 bg-cyan-500/10 text-cyan-100"
+                  : "border-transparent text-slate-300 hover:border-white/10 hover:bg-slate-900/80 hover:text-white",
+              ].join(" ")}
+            >
+              <span
+                className={[
+                  "inline-flex h-6 w-6 items-center justify-center rounded-md border text-[10px] font-semibold",
+                  active ? "border-cyan-500/25 bg-cyan-500/15 text-cyan-300" : "border-white/10 bg-slate-900 text-slate-500",
+                ].join(" ")}
+              >
+                {item.marker}
+              </span>
+              <span>{item.label}</span>
+            </Link>
+          );
+        })}
       </div>
+    </div>
+  );
+}
 
-      <nav className="space-y-6">
-        {navigationGroups.map((group) => (
-          <div key={group.label}>
-            <div className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-500">
-              {group.label}
-            </div>
-            <div className="space-y-2">
-              {group.items.map((item) => {
-                const active = isActive(item.href);
+export function Sidebar() {
+  return (
+    <aside className="flex h-full w-72 flex-col border-r border-white/10 bg-slate-950/95 px-4 py-5 backdrop-blur">
+      <Link href="/" className="mb-6 rounded-xl border border-white/10 bg-slate-900/80 px-4 py-4">
+        <div className="text-xs uppercase tracking-[0.32em] text-cyan-300/80">TNPA OS</div>
+        <div className="mt-1 text-lg font-semibold text-white">Trading + Wealth</div>
+        <div className="mt-1 text-sm text-slate-400">Professional journal and portfolio ops</div>
+      </Link>
 
-                return (
-                  <Link
-                    className={`flex h-11 items-center justify-between rounded-md px-3 text-sm font-medium transition ${
-                      active
-                        ? "bg-emerald-400/12 text-emerald-200 ring-1 ring-emerald-300/20"
-                        : "text-slate-400 hover:bg-white/[0.04] hover:text-slate-100"
-                    }`}
-                    href={item.href}
-                    key={item.href}
-                  >
-                    <span>{item.label}</span>
-                    {active ? (
-                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
-                    ) : null}
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </nav>
-
-      <div className="mt-10 rounded-md border border-white/10 bg-white/[0.03] p-4">
-        <div className="text-xs uppercase tracking-[0.2em] text-slate-500">
-          Account
-        </div>
-        <div className="mt-3 flex items-center justify-between">
-          <div>
-            <div className="text-sm font-semibold text-slate-100">
-              FTMO Swing
-            </div>
-            <div className="text-xs text-slate-500">MT5 connected</div>
-          </div>
-          <div className="rounded-full bg-emerald-400/15 px-2.5 py-1 text-xs font-semibold text-emerald-300">
-            Live
-          </div>
-        </div>
+      <div className="flex-1 space-y-6 overflow-y-auto">
+        <SidebarSection title="Trading" items={tradingItems} />
+        <SidebarSection title="Wealth" items={wealthItems} />
+        <SidebarSection title="System" items={systemItems} />
       </div>
     </aside>
   );

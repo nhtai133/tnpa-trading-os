@@ -6,6 +6,7 @@ import { EquityCurveChart } from "@/app/_components/equity-curve-chart";
 import { KpiCard } from "@/app/_components/kpi-card";
 import { MonthlyPerformanceChart } from "@/app/_components/monthly-performance-chart";
 import { RecentTradesTable } from "@/app/_components/recent-trades-table";
+import { WealthDashboardV2 } from "@/app/_components/wealth-dashboard-v2";
 import {
   readStoredBrokerAccounts,
   subscribeToBrokerAccounts,
@@ -297,6 +298,13 @@ export function DashboardShell({
 
       <section className="mt-4">
         <CashByBankCard accounts={activeBankAccounts} totalCash={totalCash} />
+      </section>
+
+      <section className="mt-6">
+        <WealthDashboardV2
+          tradingAccountEquity={accountReport?.equity ?? 0}
+          tradingAccountName={accountReport?.name ?? "MT5 Trading Account"}
+        />
       </section>
 
       {bestSetup && worstSetup ? (

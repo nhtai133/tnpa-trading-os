@@ -1,18 +1,5 @@
-import { DashboardShell } from "@/app/_components/dashboard-shell";
-import {
-  importedMt5Report,
-  mockEquityCurveFallback,
-  mockMonthlyPerformanceFallback,
-  tradeHistory,
-} from "@/app/_lib/trading-data";
+import { HomeDashboard } from "./_components/home-dashboard";
 
-export default function Home() {
-  return (
-    <DashboardShell
-      fallbackEquityCurve={mockEquityCurveFallback}
-      fallbackMonthlyPerformance={mockMonthlyPerformanceFallback}
-      initialReport={importedMt5Report}
-      initialTrades={tradeHistory}
-    />
-  );
+export default function HomePage() {
+  return <HomeDashboard />;
 }
