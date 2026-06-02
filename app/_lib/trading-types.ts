@@ -63,7 +63,7 @@ export type PropFirmName = (typeof propFirmNames)[number];
 export const propPhases = ["Phase 1", "Phase 2", "Funded"] as const;
 export type PropPhase = (typeof propPhases)[number];
 
-export const propAccountStatuses = ["Active", "Passed", "Failed", "Archived"] as const;
+export const propAccountStatuses = ["Active", "Passed", "Failed", "Funded", "Archived"] as const;
 export type PropAccountStatus = (typeof propAccountStatuses)[number];
 
 export type TradingAccount = {

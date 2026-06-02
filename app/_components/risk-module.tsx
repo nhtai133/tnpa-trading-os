@@ -1,6 +1,12 @@
 "use client";
 
+import { useState, useSyncExternalStore } from "react";
 import { AppShell } from "@/app/_components/app-shell";
+import {
+  emptyPropAccounts,
+  readStoredPropAccounts,
+  subscribeToPropAccounts,
+} from "@/app/_lib/prop-account-storage";
 import { buildRiskMetrics, type DailyRiskMetric } from "@/app/_lib/risk-metrics";
 import { useRiskSettings } from "@/app/_lib/use-risk-settings";
 import { useTradingDataset } from "@/app/_lib/use-trading-dataset";
@@ -152,8 +158,23 @@ export function RiskModule({
     initialReport,
     initialTrades,
   });
+  const propAccounts = useSyncExternalStore(
+    subscribeToPropAccounts,
+    readStoredPropAccounts,
+    () => emptyPropAccounts,
+  );
+  const registryAccountNames = propAccounts.map((account) => account.accountName);
+  const [selectedRegistryAccountName, setSelectedRegistryAccountName] = useState("");
+  const activeRegistryAccountName =
+    scopeAccountType === "prop-firm"
+      ? selectedRegistryAccountName || registryAccountNames[0] || ""
+      : "";
   const scopedTradeHistory = scopeAccountType
-    ? tradeHistory.filter((trade) => trade.accountType === scopeAccountType)
+    ? tradeHistory.filter(
+        (trade) =>
+          trade.accountType === scopeAccountType &&
+          (!activeRegistryAccountName || trade.accountName === activeRegistryAccountName),
+      )
     : tradeHistory;
   const riskTrades = scopedTradeHistory.filter((trade) => {
     const source = String(trade.source ?? "mt5");
@@ -168,6 +189,10 @@ export function RiskModule({
   const manualTrades = scopedTradeHistory.filter((trade) => String(trade.source ?? "mt5") === "manual");
   const manualOpenTrades = manualTrades.filter((trade) => trade.status === "Open");
   const manualClosedTrades = manualTrades.filter((trade) => trade.status !== "Open");
+  const selectedPropAccount =
+    scopeAccountType === "prop-firm"
+      ? propAccounts.find((account) => account.accountName === activeRegistryAccountName) ?? null
+      : null;
   const selectedPropTrade = scopeAccountType === "prop-firm" ? scopedTradeHistory[0] : null;
 
   return (
@@ -175,17 +200,37 @@ export function RiskModule({
       eyebrow={eyebrow}
       title={title}
       action={
-        <div className={`rounded-md border px-4 py-2 text-sm font-semibold ${riskTone(risk.riskLevel)}`}>
-          {risk.riskLevel}
+        <div className="flex flex-wrap items-center gap-3">
+          {scopeAccountType === "prop-firm" && registryAccountNames.length ? (
+            <label className="block">
+              <span className="mr-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                Prop Account
+              </span>
+              <select
+                className="h-10 rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
+                value={activeRegistryAccountName}
+                onChange={(event) => setSelectedRegistryAccountName(event.target.value)}
+              >
+                {registryAccountNames.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          <div className={`rounded-md border px-4 py-2 text-sm font-semibold ${riskTone(risk.riskLevel)}`}>
+            {risk.riskLevel}
+          </div>
         </div>
       }
     >
-      {selectedPropTrade ? (
+      {selectedPropAccount || selectedPropTrade ? (
         <section className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <MetricCard label="Challenge Status" value={selectedPropTrade.propStatus ?? "Active"} />
-          <MetricCard label="Challenge Type" value={selectedPropTrade.challengeType ?? "2-Step Challenge"} />
-          <MetricCard label="Phase" value={selectedPropTrade.phase ?? "Phase 1"} />
-          <MetricCard label="Account Size" value={money(selectedPropTrade.accountSize ?? risk.accountBalance)} />
+          <MetricCard label="Challenge Status" value={selectedPropAccount?.status ?? selectedPropTrade?.propStatus ?? "Active"} />
+          <MetricCard label="Challenge Type" value={selectedPropAccount?.challengeType ?? selectedPropTrade?.challengeType ?? "2-Step Challenge"} />
+          <MetricCard label="Phase" value={selectedPropAccount?.phase ?? selectedPropTrade?.phase ?? "Phase 1"} />
+          <MetricCard label="Account Size" value={money(selectedPropAccount?.accountSize ?? selectedPropTrade?.accountSize ?? risk.accountBalance)} />
         </section>
       ) : null}
 

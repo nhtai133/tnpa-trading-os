@@ -8,6 +8,11 @@ import {
   writeStoredMt5Report,
 } from "@/app/_lib/mt5-local-storage";
 import { parseMt5ReportHtml } from "@/app/_lib/mt5-parser-core";
+import {
+  emptyPropAccounts,
+  readStoredPropAccounts,
+  subscribeToPropAccounts,
+} from "@/app/_lib/prop-account-storage";
 import type {
   AccountType,
   ChallengeType,
@@ -148,6 +153,11 @@ export function ImportMt5Module({
     readStoredMt5Report,
     () => null,
   );
+  const propAccounts = useSyncExternalStore(
+    subscribeToPropAccounts,
+    readStoredPropAccounts,
+    () => emptyPropAccounts,
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadedReport, setUploadedReport] = useState<Mt5AccountReport | null>(
     null,
@@ -193,6 +203,25 @@ export function ImportMt5Module({
   const [propStatus, setPropStatus] = useState<PropAccountStatus>(
     defaultAccountType === "prop-firm" ? "Active" : report?.propStatus ?? "Active",
   );
+  const registryAccountNames = propAccounts.map((account) => account.accountName);
+  const activeAccountName =
+    accountType === "prop-firm" && registryAccountNames.length && !registryAccountNames.includes(accountName)
+      ? registryAccountNames[0]
+      : accountName;
+  const selectedRegistryAccount =
+    accountType === "prop-firm"
+      ? propAccounts.find((account) => account.accountName === activeAccountName) ?? null
+      : null;
+  const effectiveFirmName = selectedRegistryAccount?.firmName ?? firmName;
+  const effectiveAccountSize = selectedRegistryAccount?.accountSize ?? Number(accountSize);
+  const effectiveChallengeType = selectedRegistryAccount?.challengeType ?? challengeType;
+  const effectivePhase = selectedRegistryAccount?.phase ?? phase;
+  const effectiveProfitTargetPercent = selectedRegistryAccount?.profitTargetPercent ?? Number(profitTargetPercent);
+  const effectiveDailyLossLimitPercent = selectedRegistryAccount?.dailyLossLimitPercent ?? Number(dailyLossLimitPercent);
+  const effectiveMaxLossLimitPercent = selectedRegistryAccount?.maxLossLimitPercent ?? Number(maxLossLimitPercent);
+  const effectiveMinimumTradingDays = selectedRegistryAccount?.minimumTradingDays ?? Number(minimumTradingDays);
+  const effectiveStartDate = selectedRegistryAccount?.startDate ?? startDate;
+  const effectivePropStatus = selectedRegistryAccount?.status ?? propStatus;
   const [status, setStatus] = useState<ImportState>(
     report ? "success" : "idle",
   );
@@ -222,7 +251,7 @@ export function ImportMt5Module({
       return;
     }
 
-    if (!accountName || !strategyType || (accountType === "prop-firm" && (!challengeType || !phase))) {
+    if (!activeAccountName || !strategyType || (accountType === "prop-firm" && (!effectiveChallengeType || !effectivePhase))) {
       setStatus("error");
       setErrorMessage("Account assignment is required before importing.");
       return;
@@ -231,21 +260,16 @@ export function ImportMt5Module({
     if (
       requirePropMetadata &&
       accountType === "prop-firm" &&
-      (!firmName ||
-        !challengeType ||
-        !phase ||
-        !accountName ||
+      (!effectiveFirmName ||
+        !effectiveChallengeType ||
+        !effectivePhase ||
+        !activeAccountName ||
         !strategyType ||
-        !accountSize.trim() ||
-        !Number.isFinite(Number(accountSize)) ||
-        !profitTargetPercent.trim() ||
-        !Number.isFinite(Number(profitTargetPercent)) ||
-        !dailyLossLimitPercent.trim() ||
-        !Number.isFinite(Number(dailyLossLimitPercent)) ||
-        !maxLossLimitPercent.trim() ||
-        !Number.isFinite(Number(maxLossLimitPercent)) ||
-        !minimumTradingDays.trim() ||
-        !Number.isFinite(Number(minimumTradingDays)))
+        !Number.isFinite(effectiveAccountSize) ||
+        !Number.isFinite(effectiveProfitTargetPercent) ||
+        !Number.isFinite(effectiveDailyLossLimitPercent) ||
+        !Number.isFinite(effectiveMaxLossLimitPercent) ||
+        !Number.isFinite(effectiveMinimumTradingDays))
     ) {
       setStatus("error");
       setErrorMessage("Firm name, challenge type, phase, account size, account name, and strategy type are required.");
@@ -264,19 +288,19 @@ export function ImportMt5Module({
 
         const html = decodeFileBuffer(result);
         const parsedReport = assignAccountToReport({
-          accountName,
+          accountName: activeAccountName,
           accountType,
-          accountSize: Number(accountSize),
-          challengeType,
-          dailyLossLimitPercent: Number(dailyLossLimitPercent),
-          firmName,
-          maxLossLimitPercent: Number(maxLossLimitPercent),
-          minimumTradingDays: Number(minimumTradingDays),
-          phase,
-          profitTargetPercent: Number(profitTargetPercent),
-          propStatus,
+          accountSize: effectiveAccountSize,
+          challengeType: effectiveChallengeType,
+          dailyLossLimitPercent: effectiveDailyLossLimitPercent,
+          firmName: effectiveFirmName,
+          maxLossLimitPercent: effectiveMaxLossLimitPercent,
+          minimumTradingDays: effectiveMinimumTradingDays,
+          phase: effectivePhase,
+          profitTargetPercent: effectiveProfitTargetPercent,
+          propStatus: effectivePropStatus,
           report: parseMt5ReportHtml(html, file.name),
-          startDate,
+          startDate: effectiveStartDate,
           strategyType,
         });
         console.log(
@@ -393,10 +417,13 @@ export function ImportMt5Module({
             </span>
             <select
               className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
-              value={accountName}
+              value={activeAccountName}
               onChange={(event) => setAccountName(event.target.value)}
             >
-              {accountNameOptions(accountType).map((option) => (
+              {(accountType === "prop-firm" && registryAccountNames.length
+                ? registryAccountNames
+                : accountNameOptions(accountType)
+              ).map((option) => (
                 <option key={option} value={option}>
                   {option}
                 </option>
@@ -429,7 +456,7 @@ export function ImportMt5Module({
               </span>
               <select
                 className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
-                value={firmName}
+                value={effectiveFirmName}
                 onChange={(event) => setFirmName(event.target.value as PropFirmName)}
               >
                 {propFirmNames.map((option) => (
@@ -445,7 +472,7 @@ export function ImportMt5Module({
               </span>
               <input
                 className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
-                value={accountSize}
+                value={String(effectiveAccountSize)}
                 onChange={(event) => setAccountSize(event.target.value)}
               />
             </label>
@@ -455,7 +482,7 @@ export function ImportMt5Module({
               </span>
               <select
                 className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
-                value={challengeType}
+                value={effectiveChallengeType}
                 onChange={(event) => setChallengeType(event.target.value as ChallengeType)}
               >
                 {challengeTypes.map((option) => (
@@ -471,7 +498,7 @@ export function ImportMt5Module({
               </span>
               <select
                 className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
-                value={phase}
+                value={effectivePhase}
                 onChange={(event) => setPhase(event.target.value as PropPhase)}
               >
                 {propPhases.map((option) => (
@@ -487,7 +514,7 @@ export function ImportMt5Module({
               </span>
               <select
                 className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
-                value={propStatus}
+                value={effectivePropStatus}
                 onChange={(event) => setPropStatus(event.target.value as PropAccountStatus)}
               >
                 {propAccountStatuses.map((option) => (
@@ -498,10 +525,10 @@ export function ImportMt5Module({
               </select>
             </label>
             {[
-              ["Profit Target %", profitTargetPercent, setProfitTargetPercent],
-              ["Daily Loss Limit %", dailyLossLimitPercent, setDailyLossLimitPercent],
-              ["Max Loss Limit %", maxLossLimitPercent, setMaxLossLimitPercent],
-              ["Minimum Trading Days", minimumTradingDays, setMinimumTradingDays],
+              ["Profit Target %", String(effectiveProfitTargetPercent), setProfitTargetPercent],
+              ["Daily Loss Limit %", String(effectiveDailyLossLimitPercent), setDailyLossLimitPercent],
+              ["Max Loss Limit %", String(effectiveMaxLossLimitPercent), setMaxLossLimitPercent],
+              ["Minimum Trading Days", String(effectiveMinimumTradingDays), setMinimumTradingDays],
             ].map(([label, value, setter]) => (
               <label className="block" key={label as string}>
                 <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
@@ -521,7 +548,7 @@ export function ImportMt5Module({
               <input
                 className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
                 type="date"
-                value={startDate}
+                value={effectiveStartDate}
                 onChange={(event) => setStartDate(event.target.value)}
               />
             </label>
@@ -587,10 +614,10 @@ export function ImportMt5Module({
           <section className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {[
               ["Account Name", report.name],
-              ["Trading Account", report.accountName ?? accountName],
+              ["Trading Account", report.accountName ?? activeAccountName],
               ["Account Type", accountTypeLabel(report.accountType ?? accountType)],
-              ["Challenge Type", report.challengeType ?? challengeType],
-              ["Phase", report.phase ?? phase],
+              ["Challenge Type", report.challengeType ?? effectiveChallengeType],
+              ["Phase", report.phase ?? effectivePhase],
               ["Strategy Type", report.strategyType ?? strategyType],
               ["Company", report.company],
               ["Generated", report.generatedAt],

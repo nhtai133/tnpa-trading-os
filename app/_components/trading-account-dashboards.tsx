@@ -1,7 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { AppShell } from "@/app/_components/app-shell";
+import {
+  emptyPropAccounts,
+  readStoredPropAccounts,
+  subscribeToPropAccounts,
+} from "@/app/_lib/prop-account-storage";
 import { buildRiskMetrics } from "@/app/_lib/risk-metrics";
 import { useRiskSettings } from "@/app/_lib/use-risk-settings";
 import { useTradingDataset } from "@/app/_lib/use-trading-dataset";
@@ -59,6 +64,25 @@ function countTradingDays(trades: Trade[]) {
       .filter((trade) => trade.status !== "Open")
       .map((trade) => trade.date.split(",")[0] || trade.date),
   ).size;
+}
+
+function nextPropAction({
+  canTradeToday,
+  phase,
+  profitTargetProgress,
+  riskLevel,
+}: {
+  canTradeToday: string;
+  phase: string;
+  profitTargetProgress: number;
+  riskLevel: string;
+}) {
+  if (canTradeToday === "Stop") return "Stop Trading Today";
+  if (riskLevel === "Breach" || riskLevel === "Danger") return "Rule Danger";
+  if (phase === "Funded" && profitTargetProgress >= 10) return "Payout Ready";
+  if (profitTargetProgress >= 100) return "Ready For Funded";
+  if (profitTargetProgress >= 90) return "Close To Passing";
+  return "Keep Trading";
 }
 
 function MetricCard({
@@ -166,24 +190,35 @@ export function PropTradingDashboard() {
     initialReport: initialTradingReport,
     initialTrades: fallbackTradeHistory,
   });
-  const accountNames = uniqueAccountNames(tradeHistory, "prop-firm");
+  const propAccounts = useSyncExternalStore(
+    subscribeToPropAccounts,
+    readStoredPropAccounts,
+    () => emptyPropAccounts,
+  );
+  const registryNames = propAccounts.map((account) => account.accountName);
+  const accountNames = registryNames.length
+    ? registryNames
+    : uniqueAccountNames(tradeHistory, "prop-firm");
   const [accountName, setAccountName] = useState("");
+  const selectedAccountName = accountName || accountNames[0] || "";
+  const selectedRegistryAccount =
+    propAccounts.find((account) => account.accountName === selectedAccountName) ?? null;
   const trades = useMemo(
     () =>
       tradeHistory.filter(
         (trade) =>
           (trade.accountType ?? "prop-firm") === "prop-firm" &&
-          (!accountName || trade.accountName === accountName),
+          (!selectedAccountName || trade.accountName === selectedAccountName),
       ),
-    [accountName, tradeHistory],
+    [selectedAccountName, tradeHistory],
   );
   const selected = trades[0];
   const risk = buildRiskMetrics({ report: accountReport, settings, trades });
-  const accountSize = selected?.accountSize ?? accountReport?.accountSize ?? risk.accountBalance;
-  const profitTargetPercent = selected?.profitTargetPercent ?? 10;
-  const dailyLossLimitPercent = selected?.dailyLossLimitPercent ?? 5;
-  const maxLossLimitPercent = selected?.maxLossLimitPercent ?? 10;
-  const minimumTradingDays = selected?.minimumTradingDays ?? 4;
+  const accountSize = selectedRegistryAccount?.accountSize ?? selected?.accountSize ?? accountReport?.accountSize ?? risk.accountBalance;
+  const profitTargetPercent = selectedRegistryAccount?.profitTargetPercent ?? selected?.profitTargetPercent ?? 10;
+  const dailyLossLimitPercent = selectedRegistryAccount?.dailyLossLimitPercent ?? selected?.dailyLossLimitPercent ?? 5;
+  const maxLossLimitPercent = selectedRegistryAccount?.maxLossLimitPercent ?? selected?.maxLossLimitPercent ?? 10;
+  const minimumTradingDays = selectedRegistryAccount?.minimumTradingDays ?? selected?.minimumTradingDays ?? 4;
   const tradingDays = countTradingDays(trades);
   const profitTarget = accountSize * (profitTargetPercent / 100);
   const profitTargetProgress = profitTarget === 0 ? 0 : (risk.closedNetProfit / profitTarget) * 100;
@@ -192,22 +227,31 @@ export function PropTradingDashboard() {
   const dailyLossRemaining = Math.max(0, dailyLossLimit - Math.max(0, -risk.dailyPnl));
   const maxLossRemaining = Math.max(0, maxLossLimit - Math.max(0, risk.currentDrawdown));
   const canTradeToday = risk.dailyLossUsage >= 100 || risk.riskLevel === "Breach" ? "Stop" : risk.dailyLossUsage >= 70 ? "Warning" : "Yes";
+  const nextAction = nextPropAction({
+    canTradeToday,
+    phase: selectedRegistryAccount?.phase ?? selected?.phase ?? "Phase 1",
+    profitTargetProgress,
+    riskLevel: risk.riskLevel,
+  });
 
   return (
     <AppShell
       eyebrow="Prop Trading OS"
       title="Prop Trading"
-      action={<AccountSelector accountName={accountName} accountNames={accountNames} onChange={setAccountName} />}
+      action={<AccountSelector accountName={selectedAccountName} accountNames={accountNames} onChange={setAccountName} />}
     >
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <BadgeCard label="Challenge Type" value={selected?.challengeType ?? "2-Step Challenge"} />
-        <BadgeCard label="Phase" value={selected?.phase ?? "Phase 1"} />
-        <MetricCard label="Challenge Status" value={selected?.propStatus ?? "Active"} />
+        <MetricCard label="Account Size" value={plainMoney(accountSize)} />
+        <BadgeCard label="Firm" value={selectedRegistryAccount?.firmName ?? selected?.firmName ?? "FTMO"} />
+        <BadgeCard label="Challenge Type" value={selectedRegistryAccount?.challengeType ?? selected?.challengeType ?? "2-Step Challenge"} />
+        <BadgeCard label="Phase" value={selectedRegistryAccount?.phase ?? selected?.phase ?? "Phase 1"} />
+        <MetricCard label="Status" value={selectedRegistryAccount?.status ?? selected?.propStatus ?? "Active"} />
         <MetricCard
           label="Can Trade Today"
           value={canTradeToday}
           tone={canTradeToday === "Stop" ? "text-rose-300" : canTradeToday === "Warning" ? "text-amber-300" : "text-emerald-300"}
         />
+        <MetricCard label="Next Action" value={nextAction} tone={nextAction.includes("Stop") || nextAction.includes("Danger") ? "text-rose-300" : "text-emerald-300"} />
       </section>
       <section className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <ProgressCard label="Profit Target Progress" value={profitTargetProgress} />

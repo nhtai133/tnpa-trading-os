@@ -18,6 +18,10 @@ import {
   defaultRiskSettings,
   writeRiskSettings,
 } from "@/app/_lib/risk-settings-storage";
+import {
+  clearDemoPropAccounts,
+  loadDemoPropAccounts,
+} from "@/app/_lib/prop-account-storage";
 import { useRiskSettings } from "@/app/_lib/use-risk-settings";
 import type { RiskSettings } from "@/app/_lib/trading-types";
 import type {
@@ -29,6 +33,8 @@ import type {
 type ConfirmState =
   | { type: "load" }
   | { type: "clear" }
+  | { type: "load-prop" }
+  | { type: "clear-prop" }
   | null;
 
 const demoBankAccountIds = [
@@ -223,6 +229,32 @@ export function SettingsModule() {
       </section>
 
       <section className="mt-6 rounded-md border border-white/10 bg-[#0d121c] p-6 shadow-2xl shadow-black/20">
+        <h2 className="text-lg font-semibold text-white">Demo Prop Accounts</h2>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
+          Load the FTMO-style registry used by Prop Dashboard, Challenges, Funded Accounts, Risk, Import, Trades, and Analytics.
+        </p>
+
+        <div className="mt-6 flex flex-wrap gap-3">
+          <button
+            className="rounded-md bg-emerald-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={isApplying}
+            onClick={() => setConfirmState({ type: "load-prop" })}
+            type="button"
+          >
+            Load Demo Prop Accounts
+          </button>
+          <button
+            className="rounded-md border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-emerald-300/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={isApplying}
+            onClick={() => setConfirmState({ type: "clear-prop" })}
+            type="button"
+          >
+            Clear Demo Prop Accounts
+          </button>
+        </div>
+      </section>
+
+      <section className="mt-6 rounded-md border border-white/10 bg-[#0d121c] p-6 shadow-2xl shadow-black/20">
         <h2 className="text-lg font-semibold text-white">Demo Wealth Data</h2>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
           Demo data only. Do not use for real portfolio.
@@ -252,7 +284,9 @@ export function SettingsModule() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
           <div className="w-full max-w-lg rounded-md border border-white/10 bg-[#0b1019] p-6 shadow-2xl shadow-black">
             <h3 className="text-xl font-semibold text-white">
-              {confirmState.type === "load" ? "Load Demo Data?" : "Clear Demo Data?"}
+              {confirmState.type === "load" || confirmState.type === "load-prop"
+                ? "Load Demo Data?"
+                : "Clear Demo Data?"}
             </h3>
             <p className="mt-3 text-sm leading-6 text-slate-400">
               Demo data only. Do not use for real portfolio.
@@ -273,15 +307,21 @@ export function SettingsModule() {
                   setIsApplying(true);
                   if (confirmState.type === "load") {
                     loadDemoData();
-                  } else {
+                  } else if (confirmState.type === "clear") {
                     clearDemoData();
+                  } else if (confirmState.type === "load-prop") {
+                    loadDemoPropAccounts();
+                  } else {
+                    clearDemoPropAccounts();
                   }
                   setIsApplying(false);
                   setConfirmState(null);
                 }}
                 type="button"
               >
-                {confirmState.type === "load" ? "Load Demo Data" : "Clear Demo Data"}
+                {confirmState.type === "load" || confirmState.type === "load-prop"
+                  ? "Load Demo Data"
+                  : "Clear Demo Data"}
               </button>
             </div>
           </div>

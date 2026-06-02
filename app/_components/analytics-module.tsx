@@ -1,7 +1,12 @@
 "use client";
 
 import { AppShell } from "@/app/_components/app-shell";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
+import {
+  emptyPropAccounts,
+  readStoredPropAccounts,
+  subscribeToPropAccounts,
+} from "@/app/_lib/prop-account-storage";
 import { useTradingDataset } from "@/app/_lib/use-trading-dataset";
 import type {
   AccountType,
@@ -447,6 +452,17 @@ export function AnalyticsModule({
   const [strategyTypeFilter, setStrategyTypeFilter] = useState("");
   const [challengeTypeFilter, setChallengeTypeFilter] = useState("");
   const [phaseFilter, setPhaseFilter] = useState("");
+  const propAccounts = useSyncExternalStore(
+    subscribeToPropAccounts,
+    readStoredPropAccounts,
+    () => emptyPropAccounts,
+  );
+  const registryAccountNames = propAccounts.map((account) => account.accountName);
+  const [selectedRegistryAccountName, setSelectedRegistryAccountName] = useState("");
+  const activeRegistryAccountName =
+    scopeAccountType === "prop-firm"
+      ? selectedRegistryAccountName || registryAccountNames[0] || ""
+      : "";
   const { tradeHistory } = useTradingDataset({
     fallbackEquityCurve,
     fallbackMonthlyPerformance,
@@ -454,7 +470,11 @@ export function AnalyticsModule({
     initialTrades,
   });
   const scopedTradeHistory = scopeAccountType
-    ? tradeHistory.filter((trade) => trade.accountType === scopeAccountType)
+    ? tradeHistory.filter(
+        (trade) =>
+          trade.accountType === scopeAccountType &&
+          (!activeRegistryAccountName || trade.accountName === activeRegistryAccountName),
+      )
     : tradeHistory;
   const accountTypeOptions = uniqueValues(scopedTradeHistory, "accountType");
   const accountNameOptions = uniqueValues(scopedTradeHistory, "accountName");
@@ -516,6 +536,25 @@ export function AnalyticsModule({
       title={title}
       action={
         <div className="flex items-center gap-3">
+          {scopeAccountType === "prop-firm" && registryAccountNames.length ? (
+            <label className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+              <span className="mr-2">Prop Account</span>
+              <select
+                className="h-10 rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
+                value={activeRegistryAccountName}
+                onChange={(event) => {
+                  setSelectedRegistryAccountName(event.target.value);
+                  setAccountNameFilter("");
+                }}
+              >
+                {registryAccountNames.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <label className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
             <span className="mr-2">Source</span>
             <select

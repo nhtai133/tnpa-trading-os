@@ -1,7 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { AppShell } from "@/app/_components/app-shell";
+import {
+  emptyPropAccounts,
+  readStoredPropAccounts,
+  subscribeToPropAccounts,
+} from "@/app/_lib/prop-account-storage";
 import {
   type ManualTradeInput,
   updateManualTrade,
@@ -131,9 +136,9 @@ function uniqueValues(
   return Array.from(new Set(trades.map((trade) => trade[key]).filter(Boolean))).sort() as string[];
 }
 
-function accountNameOptions(accountType: string) {
+function accountNameOptions(accountType: string, registryAccountNames: string[] = []) {
   if (accountType === "prop-firm") {
-    return [...propFirmAccountNames];
+    return registryAccountNames.length ? registryAccountNames : [...propFirmAccountNames];
   }
 
   if (accountType === "broker") {
@@ -315,6 +320,12 @@ function TradeReviewDrawer({
   const [manualDraft, setManualDraft] = useState<ManualTradeInput>(
     manualTradeInputFromTrade(trade),
   );
+  const propAccounts = useSyncExternalStore(
+    subscribeToPropAccounts,
+    readStoredPropAccounts,
+    () => emptyPropAccounts,
+  );
+  const registryAccountNames = propAccounts.map((account) => account.accountName);
   const [error, setError] = useState("");
 
   function updateDraft(key: keyof TradeJournal, value: string) {
@@ -467,7 +478,7 @@ function TradeReviewDrawer({
                 updateManualDraft("accountType", value as AccountType);
                 updateManualDraft(
                   "accountName",
-                  value === "prop-firm" ? "FTMO" : "ICMarkets",
+                  value === "prop-firm" ? registryAccountNames[0] ?? "FTMO" : "ICMarkets",
                 );
                 updateManualDraft("strategyType", value === "prop-firm" ? "Intraweek" : "Swing");
               }}
@@ -475,7 +486,7 @@ function TradeReviewDrawer({
             />
             <SelectFilter
               label="Account Name"
-              options={accountNameOptions(manualDraft.accountType)}
+              options={accountNameOptions(manualDraft.accountType, registryAccountNames)}
               value={manualDraft.accountName}
               onChange={(value) => updateManualDraft("accountName", value)}
               includeAll={false}
@@ -715,12 +726,12 @@ function TradeReviewDrawer({
   );
 }
 
-function manualTradeDefaults(accountType: AccountType = "broker"): ManualTradeInput {
+function manualTradeDefaults(accountType: AccountType = "broker", accountName?: string): ManualTradeInput {
   if (accountType === "prop-firm") {
     return {
       ...initialManualTrade,
       accountType: "prop-firm",
-      accountName: "FTMO",
+      accountName: accountName ?? "FTMO",
       strategyType: "Intraweek",
     };
   }
@@ -730,14 +741,22 @@ function manualTradeDefaults(accountType: AccountType = "broker"): ManualTradeIn
 
 function CreateTradeDrawer({
   defaultAccountType = "broker",
+  defaultAccountName,
   onClose,
 }: {
+  defaultAccountName?: string;
   defaultAccountType?: AccountType;
   onClose: () => void;
 }) {
   const [draft, setDraft] = useState<ManualTradeInput>(
-    manualTradeDefaults(defaultAccountType),
+    manualTradeDefaults(defaultAccountType, defaultAccountName),
   );
+  const propAccounts = useSyncExternalStore(
+    subscribeToPropAccounts,
+    readStoredPropAccounts,
+    () => emptyPropAccounts,
+  );
+  const registryAccountNames = propAccounts.map((account) => account.accountName);
   const [error, setError] = useState("");
 
   function updateDraft(key: keyof ManualTradeInput, value: string) {
@@ -854,7 +873,7 @@ function CreateTradeDrawer({
               updateDraft("accountType", value as AccountType);
               updateDraft(
                 "accountName",
-                value === "prop-firm" ? "FTMO" : "ICMarkets",
+                value === "prop-firm" ? registryAccountNames[0] ?? "FTMO" : "ICMarkets",
               );
               updateDraft("strategyType", value === "prop-firm" ? "Intraweek" : "Swing");
             }}
@@ -862,7 +881,7 @@ function CreateTradeDrawer({
           />
           <SelectFilter
             label="Account Name"
-            options={accountNameOptions(draft.accountType)}
+            options={accountNameOptions(draft.accountType, registryAccountNames)}
             value={draft.accountName}
             onChange={(value) => updateDraft("accountName", value)}
             includeAll={false}
@@ -1095,14 +1114,25 @@ export function TradesModule({
   const [page, setPage] = useState(1);
   const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
   const [creatingTrade, setCreatingTrade] = useState(false);
-
-  const scopedTradeHistory = useMemo(
-    () =>
-      scopeAccountType
-        ? tradeHistory.filter((trade) => trade.accountType === scopeAccountType)
-        : tradeHistory,
-    [scopeAccountType, tradeHistory],
+  const propAccounts = useSyncExternalStore(
+    subscribeToPropAccounts,
+    readStoredPropAccounts,
+    () => emptyPropAccounts,
   );
+  const registryAccountNames = propAccounts.map((account) => account.accountName);
+  const [selectedRegistryAccountName, setSelectedRegistryAccountName] = useState("");
+  const activeRegistryAccountName =
+    scopeAccountType === "prop-firm"
+      ? selectedRegistryAccountName || registryAccountNames[0] || ""
+      : "";
+
+  const scopedTradeHistory = scopeAccountType
+    ? tradeHistory.filter(
+        (trade) =>
+          trade.accountType === scopeAccountType &&
+          (!activeRegistryAccountName || trade.accountName === activeRegistryAccountName),
+      )
+    : tradeHistory;
   const symbols = useMemo(() => uniqueValues(scopedTradeHistory, "symbol"), [scopedTradeHistory]);
   const accountTypeOptions = useMemo(() => uniqueValues(scopedTradeHistory, "accountType"), [scopedTradeHistory]);
   const accountNameFilterOptions = useMemo(() => uniqueValues(scopedTradeHistory, "accountName"), [scopedTradeHistory]);
@@ -1181,13 +1211,36 @@ export function TradesModule({
       eyebrow={eyebrow}
       title={title}
       action={
-        <button
-          className="rounded-md bg-emerald-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300"
-          onClick={() => setCreatingTrade(true)}
-          type="button"
-        >
-          New Trade
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          {scopeAccountType === "prop-firm" && registryAccountNames.length ? (
+            <label className="block">
+              <span className="mr-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                Prop Account
+              </span>
+              <select
+                className="h-10 rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
+                value={activeRegistryAccountName}
+                onChange={(event) => {
+                  setSelectedRegistryAccountName(event.target.value);
+                  setPage(1);
+                }}
+              >
+                {registryAccountNames.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          <button
+            className="rounded-md bg-emerald-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300"
+            onClick={() => setCreatingTrade(true)}
+            type="button"
+          >
+            New Trade
+          </button>
+        </div>
       }
     >
       <section className="rounded-md border border-white/10 bg-[#0d121c] p-5 shadow-2xl shadow-black/20">
@@ -1489,6 +1542,7 @@ export function TradesModule({
       ) : null}
       {creatingTrade ? (
         <CreateTradeDrawer
+          defaultAccountName={activeRegistryAccountName || undefined}
           defaultAccountType={scopeAccountType}
           onClose={() => setCreatingTrade(false)}
         />

@@ -3,6 +3,12 @@
 import { useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import { AppShell } from "@/app/_components/app-shell";
+import {
+  emptyPropAccounts,
+  readStoredPropAccounts,
+  subscribeToPropAccounts,
+  type PropAccount,
+} from "@/app/_lib/prop-account-storage";
 import { buildRiskMetrics } from "@/app/_lib/risk-metrics";
 import { useRiskSettings } from "@/app/_lib/use-risk-settings";
 import { useTradingDataset } from "@/app/_lib/use-trading-dataset";
@@ -114,6 +120,14 @@ function useTradingOsData(accountType: AccountType) {
   });
   const trades = tradeHistory.filter((trade) => (trade.accountType ?? "broker") === accountType);
   return { accountReport, trades };
+}
+
+function usePropAccountRegistry() {
+  return useSyncExternalStore(subscribeToPropAccounts, readStoredPropAccounts, () => emptyPropAccounts);
+}
+
+function tradesForPropAccount(trades: Trade[], account: PropAccount) {
+  return trades.filter((trade) => trade.accountName === account.accountName);
 }
 
 function accountSummaries(trades: Trade[]): AccountSummary[] {
@@ -286,6 +300,76 @@ function AccountTable({ rows, mode }: { rows: AccountSummary[]; mode: "prop" | "
   );
 }
 
+function PropLifecycleCard({
+  account,
+  accountReport,
+  trades,
+}: {
+  account: PropAccount;
+  accountReport: ReturnType<typeof useTradingOsData>["accountReport"];
+  trades: Trade[];
+}) {
+  const settings = useRiskSettings();
+  const accountTrades = tradesForPropAccount(trades, account);
+  const risk = buildRiskMetrics({ report: accountReport, settings, trades: accountTrades });
+  const target = account.accountSize * (account.profitTargetPercent / 100);
+  const targetProgress = target ? (risk.closedNetProfit / target) * 100 : 0;
+  const dailyLossRemaining = Math.max(
+    0,
+    account.accountSize * (account.dailyLossLimitPercent / 100) - Math.max(0, -risk.dailyPnl),
+  );
+  const maxLossRemaining = Math.max(
+    0,
+    account.accountSize * (account.maxLossLimitPercent / 100) - Math.max(0, risk.currentDrawdown),
+  );
+  const days = tradingDays(accountTrades);
+  const dayProgress = account.minimumTradingDays
+    ? (days / account.minimumTradingDays) * 100
+    : 100;
+
+  return (
+    <div className="rounded-md border border-white/10 bg-white/[0.03] p-5">
+      <h3 className="text-base font-semibold text-white">{account.accountName}</h3>
+      <div className="space-y-4">
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Badge value={account.firmName} />
+          <Badge value={account.challengeType} tone="cyan" />
+          <Badge value={account.phase} tone="amber" />
+          <Badge value={account.status} tone={account.status === "Failed" ? "rose" : "emerald"} />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-md border border-white/10 bg-white/[0.03] p-3">
+            <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Account Size</div>
+            <div className="mt-2 font-semibold text-white">{plainMoney(account.accountSize)}</div>
+          </div>
+          <div className="rounded-md border border-white/10 bg-white/[0.03] p-3">
+            <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Daily Loss Remaining</div>
+            <div className="mt-2 font-semibold text-white">{plainMoney(dailyLossRemaining)}</div>
+          </div>
+          <div className="rounded-md border border-white/10 bg-white/[0.03] p-3">
+            <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Max Loss Remaining</div>
+            <div className="mt-2 font-semibold text-white">{plainMoney(maxLossRemaining)}</div>
+          </div>
+        </div>
+        <div>
+          <div className="mb-2 flex justify-between text-sm text-slate-300">
+            <span>Profit Target Progress</span>
+            <span>{percent(targetProgress)}</span>
+          </div>
+          <ProgressBar value={targetProgress} />
+        </div>
+        <div>
+          <div className="mb-2 flex justify-between text-sm text-slate-300">
+            <span>Trading Days Progress</span>
+            <span>{days}/{account.minimumTradingDays}</span>
+          </div>
+          <ProgressBar value={dayProgress} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AnalyticsTable({ rows }: { rows: ReturnType<typeof groupedMetricRows> }) {
   return (
     <div className="overflow-x-auto">
@@ -319,18 +403,43 @@ function AnalyticsTable({ rows }: { rows: ReturnType<typeof groupedMetricRows> }
 
 export function PropAccountsModule() {
   const { trades } = useTradingOsData("prop-firm");
+  const registryAccounts = usePropAccountRegistry();
   const rows = accountSummaries(trades);
 
   return (
     <AppShell eyebrow="Prop Trading OS" title="Prop Accounts">
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Active Accounts" value={`${rows.filter((row) => row.status === "Active").length}`} />
-        <MetricCard label="Passed Accounts" value={`${rows.filter((row) => row.status === "Passed").length}`} />
+        <MetricCard label="Registry Accounts" value={`${registryAccounts.length || rows.length}`} />
+        <MetricCard label="Active Accounts" value={`${registryAccounts.filter((row) => row.status === "Active").length || rows.filter((row) => row.status === "Active").length}`} />
         <MetricCard label="Total Prop P/L" value={money(netProfit(trades))} tone={netProfit(trades) >= 0 ? "text-emerald-300" : "text-rose-300"} />
         <MetricCard label="Open Positions" value={`${openTrades(trades).length}`} />
       </section>
       <div className="mt-6">
-        <Section title="Prop Account Book">{rows.length ? <AccountTable rows={rows} mode="prop" /> : <EmptyState text="No prop trading accounts found in shared trades." />}</Section>
+        <Section title="Prop Account Registry">
+          {registryAccounts.length ? (
+            <div className="grid gap-3 lg:grid-cols-2">
+              {registryAccounts.map((account) => (
+                <div className="rounded-md border border-white/10 bg-white/[0.03] p-4" key={account.id}>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <div className="font-semibold text-white">{account.accountName}</div>
+                      <div className="mt-1 text-sm text-slate-400">{account.firmName} / {plainMoney(account.accountSize)}</div>
+                    </div>
+                    <Badge value={account.status} tone={account.status === "Failed" ? "rose" : "emerald"} />
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Badge value={account.challengeType} tone="cyan" />
+                    <Badge value={account.phase} tone="amber" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : rows.length ? (
+            <AccountTable rows={rows} mode="prop" />
+          ) : (
+            <EmptyState text="No prop account registry records found. Load demo prop accounts from Settings." />
+          )}
+        </Section>
       </div>
     </AppShell>
   );
@@ -338,72 +447,78 @@ export function PropAccountsModule() {
 
 export function PropChallengesModule() {
   const { accountReport, trades } = useTradingOsData("prop-firm");
-  const settings = useRiskSettings();
-  const risk = buildRiskMetrics({ report: accountReport, settings, trades });
-  const rows = accountSummaries(trades).filter((row) => row.challengeType !== "Funded Account" && row.phase !== "Funded");
+  const registryAccounts = usePropAccountRegistry();
+  const challengeAccounts = registryAccounts.filter((account) => account.challengeType !== "Funded Account" && account.phase !== "Funded");
+  const activeAccounts = challengeAccounts.filter((account) => account.status === "Active");
+  const passedAccounts = challengeAccounts.filter((account) => account.status === "Passed");
+  const failedAccounts = challengeAccounts.filter((account) => account.status === "Failed");
 
   return (
     <AppShell eyebrow="Prop Trading OS" title="Challenges">
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Challenge Progress" value={percent(rows[0] ? (rows[0].closedPnl / (rows[0].accountSize * (rows[0].profitTargetPercent / 100))) * 100 : 0)} />
-        <MetricCard label="Daily Loss Usage" value={percent(risk.dailyLossUsage)} tone={risk.dailyLossUsage >= 70 ? "text-amber-300" : "text-emerald-300"} />
-        <MetricCard label="Max Loss Usage" value={percent(risk.maxLossUsage)} tone={risk.maxLossUsage >= 70 ? "text-amber-300" : "text-emerald-300"} />
-        <MetricCard label="Rule Compliance" value={risk.riskLevel} tone={risk.riskLevel === "Breach" ? "text-rose-300" : "text-emerald-300"} />
+        <MetricCard label="Active Challenges" value={`${activeAccounts.length}`} />
+        <MetricCard label="Passed Challenges" value={`${passedAccounts.length}`} />
+        <MetricCard label="Failed Challenges" value={`${failedAccounts.length}`} tone={failedAccounts.length ? "text-rose-300" : "text-white"} />
+        <MetricCard label="Registry Challenges" value={`${challengeAccounts.length}`} />
       </section>
-      <div className="mt-6 grid gap-4 lg:grid-cols-2">
-        {rows.length ? (
-          rows.map((row) => {
-            const target = row.accountSize * (row.profitTargetPercent / 100);
-            const progress = target ? (row.closedPnl / target) * 100 : 0;
-            const dayProgress = (row.tradingDays / Math.max(1, row.minimumTradingDays)) * 100;
-            return (
-              <Section title={row.accountName} key={row.key}>
-                <div className="space-y-4">
-                  <div className="flex flex-wrap gap-2">
-                    <Badge value={row.firmName} />
-                    <Badge value={row.challengeType} tone="cyan" />
-                    <Badge value={row.phase} tone="amber" />
-                  </div>
-                  <div>
-                    <div className="mb-2 flex justify-between text-sm text-slate-300">
-                      <span>Profit Target</span>
-                      <span>{percent(progress)}</span>
-                    </div>
-                    <ProgressBar value={progress} />
-                  </div>
-                  <div>
-                    <div className="mb-2 flex justify-between text-sm text-slate-300">
-                      <span>Trading Days</span>
-                      <span>{row.tradingDays}/{row.minimumTradingDays}</span>
-                    </div>
-                    <ProgressBar value={dayProgress} />
-                  </div>
-                </div>
-              </Section>
-            );
-          })
-        ) : (
-          <Section title="Challenges"><EmptyState text="No active challenge accounts found." /></Section>
-        )}
-      </div>
+      {[
+        ["Active Challenges", activeAccounts],
+        ["Passed Challenges", passedAccounts],
+        ["Failed Challenges", failedAccounts],
+      ].map(([title, accounts]) => (
+        <div className="mt-6" key={title as string}>
+          <Section title={title as string}>
+            {(accounts as PropAccount[]).length ? (
+              <div className="grid gap-4 lg:grid-cols-2">
+                {(accounts as PropAccount[]).map((account) => (
+                  <PropLifecycleCard account={account} accountReport={accountReport} key={account.id} trades={trades} />
+                ))}
+              </div>
+            ) : (
+              <EmptyState text={`No ${(title as string).toLowerCase()} found.`} />
+            )}
+          </Section>
+        </div>
+      ))}
     </AppShell>
   );
 }
 
 export function PropFundedAccountsModule() {
-  const { trades } = useTradingOsData("prop-firm");
-  const rows = accountSummaries(trades).filter((row) => row.challengeType === "Funded Account" || row.phase === "Funded");
+  const { accountReport, trades } = useTradingOsData("prop-firm");
+  const settings = useRiskSettings();
+  const fundedAccounts = usePropAccountRegistry().filter((account) => account.status === "Funded" || account.phase === "Funded");
 
   return (
     <AppShell eyebrow="Prop Trading OS" title="Funded Accounts">
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Funded Accounts" value={`${rows.length}`} />
-        <MetricCard label="Funded Net Profit" value={money(rows.reduce((sum, row) => sum + row.closedPnl, 0))} />
-        <MetricCard label="Open Funded Positions" value={`${rows.reduce((sum, row) => sum + row.openPositions, 0)}`} />
-        <MetricCard label="Payout Ready" value={`${rows.filter((row) => row.closedPnl > 0 && row.status !== "Failed").length}`} />
+        <MetricCard label="Funded Accounts" value={`${fundedAccounts.length}`} />
+        <MetricCard label="Funded Net Profit" value={money(fundedAccounts.reduce((sum, account) => sum + netProfit(tradesForPropAccount(trades, account)), 0))} />
+        <MetricCard label="Open Funded Positions" value={`${fundedAccounts.reduce((sum, account) => sum + openTrades(tradesForPropAccount(trades, account)).length, 0)}`} />
+        <MetricCard label="Payout Ready" value={`${fundedAccounts.filter((account) => netProfit(tradesForPropAccount(trades, account)) > 0).length}`} />
       </section>
-      <div className="mt-6">
-        <Section title="Funded Account Control">{rows.length ? <AccountTable rows={rows} mode="prop" /> : <EmptyState text="No funded prop accounts found." />}</Section>
+      <div className="mt-6 grid gap-4 lg:grid-cols-2">
+        {fundedAccounts.length ? (
+          fundedAccounts.map((account) => {
+            const accountTrades = tradesForPropAccount(trades, account);
+            const risk = buildRiskMetrics({ report: accountReport, settings, trades: accountTrades });
+            const pnl = netProfit(accountTrades);
+            const openPositions = openTrades(accountTrades).length;
+            return (
+              <Section title={account.accountName} key={account.id}>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <MetricCard label="Account Size" value={plainMoney(account.accountSize)} />
+                  <MetricCard label="Net Profit" value={money(pnl)} tone={pnl >= 0 ? "text-emerald-300" : "text-rose-300"} />
+                  <MetricCard label="Payout Ready" value={pnl > 0 && risk.riskLevel !== "Breach" ? "Yes" : "No"} />
+                  <MetricCard label="Open Positions" value={`${openPositions}`} />
+                  <MetricCard label="Risk Status" value={risk.riskLevel} tone={risk.riskLevel === "Breach" ? "text-rose-300" : "text-emerald-300"} />
+                </div>
+              </Section>
+            );
+          })
+        ) : (
+          <Section title="Funded Accounts"><EmptyState text="No funded prop accounts found. Load demo prop accounts from Settings." /></Section>
+        )}
       </div>
     </AppShell>
   );
