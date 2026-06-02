@@ -9,12 +9,28 @@ type NavItem = {
   marker: string;
 };
 
-const tradingItems: NavItem[] = [
-  { href: "/trading", label: "Trading Dashboard", marker: "TD" },
-  { href: "/prop-firm", label: "Prop Firm", marker: "PF" },
-  { href: "/broker-trading", label: "Broker Trading", marker: "BT" },
+const propTradingItems: NavItem[] = [
+  { href: "/prop-trading", label: "Prop Dashboard", marker: "PD" },
+  { href: "/prop-trading/trades", label: "Prop Trades", marker: "PT" },
+  { href: "/prop-trading/analytics", label: "Prop Analytics", marker: "PX" },
+  { href: "/prop-trading/risk", label: "Prop Risk Monitor", marker: "PR" },
+  { href: "/prop-trading/import-mt5", label: "Prop Import MT5", marker: "PM" },
+  { href: "/prop-trading/accounts", label: "Accounts", marker: "PA" },
+  { href: "/prop-trading/challenges", label: "Challenges", marker: "PC" },
+  { href: "/prop-trading/funded-accounts", label: "Funded Accounts", marker: "PF" },
+  { href: "/prop-trading/payouts", label: "Payouts", marker: "PO" },
+];
+
+const personalTradingItems: NavItem[] = [
+  { href: "/personal-trading", label: "Dashboard", marker: "TD" },
+  { href: "/personal-trading/accounts", label: "Accounts", marker: "TA" },
+  { href: "/personal-trading/performance", label: "Performance", marker: "TP" },
+  { href: "/personal-trading/withdrawals", label: "Withdrawals", marker: "TW" },
+  { href: "/personal-trading/analytics", label: "Analytics", marker: "TX" },
+];
+
+const sharedTradingItems: NavItem[] = [
   { href: "/trades", label: "Trades", marker: "TR" },
-  { href: "/analytics", label: "Analytics", marker: "AN" },
   { href: "/risk", label: "Risk Monitor", marker: "RM" },
   { href: "/import-mt5", label: "Import MT5", marker: "MT" },
 ];
@@ -40,7 +56,15 @@ function SidebarSection({ title, items }: { title: string; items: NavItem[] }) {
       <div className="px-2 text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-500">{title}</div>
       <div className="space-y-1">
         {items.map((item) => {
-          const active = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
+          const isSectionDashboard =
+            item.href === "/prop-trading" ||
+            item.href === "/personal-trading" ||
+            item.href === "/wealth";
+          const active =
+            pathname === item.href ||
+            (item.href !== "/" &&
+              !isSectionDashboard &&
+              pathname.startsWith(`${item.href}/`));
           return (
             <Link
               key={item.href}
@@ -79,7 +103,9 @@ export function Sidebar() {
       </Link>
 
       <div className="flex-1 space-y-6 overflow-y-auto">
-        <SidebarSection title="Trading" items={tradingItems} />
+        <SidebarSection title="Prop Trading" items={propTradingItems} />
+        <SidebarSection title="Personal Trading" items={personalTradingItems} />
+        <SidebarSection title="Shared Trading" items={sharedTradingItems} />
         <SidebarSection title="Wealth" items={wealthItems} />
         <SidebarSection title="System" items={systemItems} />
       </div>

@@ -20,6 +20,12 @@ function money(value: number) {
   })}`;
 }
 
+function plainMoney(value: number) {
+  return `$${Math.abs(value).toLocaleString(undefined, {
+    maximumFractionDigits: 2,
+  })}`;
+}
+
 function percent(value: number) {
   return `${Math.max(0, value).toFixed(1)}%`;
 }
@@ -28,7 +34,7 @@ function uniqueAccountNames(trades: Trade[], accountType: AccountType) {
   return Array.from(
     new Set(
       trades
-        .filter((trade) => (trade.accountType ?? "Broker") === accountType)
+        .filter((trade) => (trade.accountType ?? "broker") === accountType)
         .map((trade) => trade.accountName ?? "Unassigned"),
     ),
   ).sort();
@@ -47,6 +53,14 @@ function monthlyPerformance(trades: Trade[]): MonthlyPerformance[] {
   return Array.from(grouped.entries()).map(([month, pnl]) => ({ month, pnl }));
 }
 
+function countTradingDays(trades: Trade[]) {
+  return new Set(
+    trades
+      .filter((trade) => trade.status !== "Open")
+      .map((trade) => trade.date.split(",")[0] || trade.date),
+  ).size;
+}
+
 function MetricCard({
   label,
   value,
@@ -60,6 +74,17 @@ function MetricCard({
     <section className="rounded-md border border-white/10 bg-[#0d121c] p-5 shadow-2xl shadow-black/20">
       <div className="text-sm font-medium text-slate-400">{label}</div>
       <div className={`mt-3 text-2xl font-semibold ${tone}`}>{value}</div>
+    </section>
+  );
+}
+
+function BadgeCard({ label, value }: { label: string; value: string }) {
+  return (
+    <section className="rounded-md border border-emerald-300/20 bg-emerald-400/10 p-5 shadow-2xl shadow-black/20">
+      <div className="text-sm font-medium text-emerald-200">{label}</div>
+      <div className="mt-3 inline-flex rounded-full border border-emerald-300/30 px-3 py-1 text-sm font-semibold text-emerald-100">
+        {value}
+      </div>
     </section>
   );
 }
@@ -94,7 +119,7 @@ function AccountSelector({
   );
 }
 
-function UsageCard({ label, value }: { label: string; value: number }) {
+function ProgressCard({ label, value }: { label: string; value: number }) {
   return (
     <section className="rounded-md border border-white/10 bg-[#0d121c] p-5 shadow-2xl shadow-black/20">
       <div className="flex items-center justify-between gap-3">
@@ -103,7 +128,7 @@ function UsageCard({ label, value }: { label: string; value: number }) {
       </div>
       <div className="mt-4 h-2 rounded-full bg-white/[0.06]">
         <div
-          className={`h-2 rounded-full ${value >= 85 ? "bg-rose-400" : value >= 70 ? "bg-amber-300" : "bg-emerald-400"}`}
+          className={`h-2 rounded-full ${value >= 100 ? "bg-emerald-400" : value >= 70 ? "bg-amber-300" : "bg-sky-400"}`}
           style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
         />
       </div>
@@ -133,7 +158,7 @@ function MonthlyTable({ rows }: { rows: MonthlyPerformance[] }) {
   );
 }
 
-export function PropFirmDashboard() {
+export function PropTradingDashboard() {
   const settings = useRiskSettings();
   const { accountReport, tradeHistory } = useTradingDataset({
     fallbackEquityCurve,
@@ -141,54 +166,74 @@ export function PropFirmDashboard() {
     initialReport: initialTradingReport,
     initialTrades: fallbackTradeHistory,
   });
-  const accountNames = uniqueAccountNames(tradeHistory, "Prop Firm");
+  const accountNames = uniqueAccountNames(tradeHistory, "prop-firm");
   const [accountName, setAccountName] = useState("");
   const trades = useMemo(
     () =>
       tradeHistory.filter(
         (trade) =>
-          (trade.accountType ?? "Prop Firm") === "Prop Firm" &&
+          (trade.accountType ?? "prop-firm") === "prop-firm" &&
           (!accountName || trade.accountName === accountName),
       ),
     [accountName, tradeHistory],
   );
-  const risk = buildRiskMetrics({
-    report: accountReport,
-    settings,
-    trades,
-  });
+  const selected = trades[0];
+  const risk = buildRiskMetrics({ report: accountReport, settings, trades });
+  const accountSize = selected?.accountSize ?? accountReport?.accountSize ?? risk.accountBalance;
+  const profitTargetPercent = selected?.profitTargetPercent ?? 10;
+  const dailyLossLimitPercent = selected?.dailyLossLimitPercent ?? 5;
+  const maxLossLimitPercent = selected?.maxLossLimitPercent ?? 10;
+  const minimumTradingDays = selected?.minimumTradingDays ?? 4;
+  const tradingDays = countTradingDays(trades);
+  const profitTarget = accountSize * (profitTargetPercent / 100);
+  const profitTargetProgress = profitTarget === 0 ? 0 : (risk.closedNetProfit / profitTarget) * 100;
+  const dailyLossLimit = accountSize * (dailyLossLimitPercent / 100);
+  const maxLossLimit = accountSize * (maxLossLimitPercent / 100);
+  const dailyLossRemaining = Math.max(0, dailyLossLimit - Math.max(0, -risk.dailyPnl));
+  const maxLossRemaining = Math.max(0, maxLossLimit - Math.max(0, risk.currentDrawdown));
+  const canTradeToday = risk.dailyLossUsage >= 100 || risk.riskLevel === "Breach" ? "Stop" : risk.dailyLossUsage >= 70 ? "Warning" : "Yes";
 
   return (
     <AppShell
-      eyebrow="Prop Firm"
-      title="Prop Firm Dashboard"
+      eyebrow="Prop Trading OS"
+      title="Prop Trading"
       action={<AccountSelector accountName={accountName} accountNames={accountNames} onChange={setAccountName} />}
     >
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <MetricCard label="FTMO Risk Status" value={risk.riskLevel} />
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <BadgeCard label="Challenge Type" value={selected?.challengeType ?? "2-Step Challenge"} />
+        <BadgeCard label="Phase" value={selected?.phase ?? "Phase 1"} />
+        <MetricCard label="Challenge Status" value={selected?.propStatus ?? "Active"} />
+        <MetricCard
+          label="Can Trade Today"
+          value={canTradeToday}
+          tone={canTradeToday === "Stop" ? "text-rose-300" : canTradeToday === "Warning" ? "text-amber-300" : "text-emerald-300"}
+        />
+      </section>
+      <section className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <ProgressCard label="Profit Target Progress" value={profitTargetProgress} />
+        <MetricCard label="Daily Loss Remaining" value={plainMoney(dailyLossRemaining)} />
+        <MetricCard label="Max Loss Remaining" value={plainMoney(maxLossRemaining)} />
+        <ProgressCard label="Trading Days Progress" value={(tradingDays / Math.max(1, minimumTradingDays)) * 100} />
         <MetricCard label="Discipline Score" value={`${risk.disciplineScore}/100`} />
-        <UsageCard label="Daily Loss Usage" value={risk.dailyLossUsage} />
-        <UsageCard label="Max Loss Usage" value={risk.maxLossUsage} />
-        <UsageCard label="Profit Target Progress" value={risk.profitTargetProgress} />
       </section>
     </AppShell>
   );
 }
 
-export function BrokerTradingDashboard() {
+export function PersonalTradingDashboard() {
   const { tradeHistory } = useTradingDataset({
     fallbackEquityCurve,
     fallbackMonthlyPerformance,
     initialReport: initialTradingReport,
     initialTrades: fallbackTradeHistory,
   });
-  const accountNames = uniqueAccountNames(tradeHistory, "Broker");
+  const accountNames = uniqueAccountNames(tradeHistory, "broker");
   const [accountName, setAccountName] = useState("");
   const trades = useMemo(
     () =>
       tradeHistory.filter(
         (trade) =>
-          (trade.accountType ?? "Broker") === "Broker" &&
+          (trade.accountType ?? "broker") === "broker" &&
           (!accountName || trade.accountName === accountName),
       ),
     [accountName, tradeHistory],
@@ -197,21 +242,33 @@ export function BrokerTradingDashboard() {
   const openPositions = trades.filter((trade) => trade.status === "Open");
   const netProfit = closedTrades.reduce((sum, trade) => sum + trade.pnl, 0);
   const floatingPnl = openPositions.reduce((sum, trade) => sum + (trade.floatingPnl ?? 0), 0);
+  const monthlyRows = monthlyPerformance(trades);
+  const latestMonthlyReturn = monthlyRows.at(-1)?.pnl ?? 0;
+  const swingTrades = trades.filter((trade) => trade.strategyType === "Swing");
+  const intraweekTrades = trades.filter((trade) => trade.strategyType === "Intraweek");
 
   return (
     <AppShell
-      eyebrow="Broker Trading"
-      title="Broker Trading Dashboard"
+      eyebrow="Personal Trading OS"
+      title="Personal Trading"
       action={<AccountSelector accountName={accountName} accountNames={accountNames} onChange={setAccountName} />}
     >
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Net Profit" value={money(netProfit)} tone={netProfit >= 0 ? "text-emerald-300" : "text-rose-300"} />
+        <MetricCard label="Monthly Return" value={money(latestMonthlyReturn)} tone={latestMonthlyReturn >= 0 ? "text-emerald-300" : "text-rose-300"} />
         <MetricCard label="Open Positions" value={`${openPositions.length}`} />
         <MetricCard label="Floating P/L" value={money(floatingPnl)} tone={floatingPnl >= 0 ? "text-emerald-300" : "text-rose-300"} />
       </section>
+      <section className="mt-6 grid gap-4 sm:grid-cols-2">
+        <MetricCard label="Swing Trades" value={`${swingTrades.length}`} />
+        <MetricCard label="Intraweek Trades" value={`${intraweekTrades.length}`} />
+      </section>
       <div className="mt-6">
-        <MonthlyTable rows={monthlyPerformance(trades)} />
+        <MonthlyTable rows={monthlyRows} />
       </div>
     </AppShell>
   );
 }
+
+export const PropFirmDashboard = PropTradingDashboard;
+export const BrokerTradingDashboard = PersonalTradingDashboard;

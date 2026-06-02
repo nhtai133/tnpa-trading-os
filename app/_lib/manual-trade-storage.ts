@@ -2,7 +2,11 @@ import { getDefaultPlaybook } from "@/app/_lib/playbook-storage";
 import { getDefaultSetupTag } from "@/app/_lib/setup-tag-storage";
 import type {
   AccountType,
+  ChallengeType,
   Playbook,
+  PropAccountStatus,
+  PropFirmName,
+  PropPhase,
   SetupTag,
   StrategyType,
   Trade,
@@ -14,6 +18,16 @@ export type ManualTradeInput = TradeJournal & {
   accountType: AccountType;
   accountName: string;
   strategyType: StrategyType;
+  firmName: PropFirmName;
+  accountSize: string;
+  challengeType: ChallengeType;
+  phase: PropPhase;
+  profitTargetPercent: string;
+  dailyLossLimitPercent: string;
+  maxLossLimitPercent: string;
+  minimumTradingDays: string;
+  startDate: string;
+  propStatus: PropAccountStatus;
   symbol: string;
   side: "Long" | "Short";
   openTime: string;
@@ -41,6 +55,14 @@ function cleanNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+function normalizeAccountType(value: unknown): AccountType {
+  if (value === "prop-firm" || value === "Prop Firm") {
+    return "prop-firm";
+  }
+
+  return "broker";
+}
+
 function sanitizeTrade(value: unknown): Trade | null {
   if (!value || typeof value !== "object") {
     return null;
@@ -54,13 +76,24 @@ function sanitizeTrade(value: unknown): Trade | null {
 
   const status = trade.status ?? "Closed";
   const pnl = cleanNumber(trade.pnl) ?? 0;
+  const accountType = normalizeAccountType(trade.accountType);
 
   return {
     id: trade.id,
     source: "manual",
-    accountType: trade.accountType ?? "Broker",
-    accountName: trade.accountName ?? "ICMarkets Swing",
+    accountType,
+    accountName: trade.accountName ?? (accountType === "prop-firm" ? "FTMO" : "ICMarkets"),
     strategyType: trade.strategyType ?? "Swing",
+    firmName: accountType === "prop-firm" ? trade.firmName ?? "FTMO" : undefined,
+    accountSize: accountType === "prop-firm" ? trade.accountSize ?? 100000 : undefined,
+    challengeType: accountType === "prop-firm" ? trade.challengeType ?? "2-Step Challenge" : undefined,
+    phase: accountType === "prop-firm" ? trade.phase ?? "Phase 1" : undefined,
+    profitTargetPercent: accountType === "prop-firm" ? trade.profitTargetPercent ?? 10 : undefined,
+    dailyLossLimitPercent: accountType === "prop-firm" ? trade.dailyLossLimitPercent ?? 5 : undefined,
+    maxLossLimitPercent: accountType === "prop-firm" ? trade.maxLossLimitPercent ?? 10 : undefined,
+    minimumTradingDays: accountType === "prop-firm" ? trade.minimumTradingDays ?? 4 : undefined,
+    startDate: accountType === "prop-firm" ? cleanText(trade.startDate) : undefined,
+    propStatus: accountType === "prop-firm" ? trade.propStatus ?? "Active" : undefined,
     symbol: trade.symbol,
     setup: trade.setup ?? "Manual trade",
     setupTag: trade.setupTag ?? getDefaultSetupTag(trade.setup ?? "Manual trade"),
@@ -109,6 +142,7 @@ function toTrade(input: ManualTradeInput, tradeId: string): Trade {
   const floatingPnl = input.floatingPnl.trim() ? Number(input.floatingPnl) : undefined;
   const entry = Number(input.openPrice);
   const exit = Number(input.closePrice);
+  const isPropFirm = input.accountType === "prop-firm";
 
   return {
     id: tradeId,
@@ -116,6 +150,16 @@ function toTrade(input: ManualTradeInput, tradeId: string): Trade {
     accountType: input.accountType,
     accountName: input.accountName,
     strategyType: input.strategyType,
+    firmName: isPropFirm ? input.firmName : undefined,
+    accountSize: isPropFirm && Number.isFinite(Number(input.accountSize)) ? Number(input.accountSize) : undefined,
+    challengeType: isPropFirm ? input.challengeType : undefined,
+    phase: isPropFirm ? input.phase : undefined,
+    profitTargetPercent: isPropFirm && Number.isFinite(Number(input.profitTargetPercent)) ? Number(input.profitTargetPercent) : undefined,
+    dailyLossLimitPercent: isPropFirm && Number.isFinite(Number(input.dailyLossLimitPercent)) ? Number(input.dailyLossLimitPercent) : undefined,
+    maxLossLimitPercent: isPropFirm && Number.isFinite(Number(input.maxLossLimitPercent)) ? Number(input.maxLossLimitPercent) : undefined,
+    minimumTradingDays: isPropFirm && Number.isFinite(Number(input.minimumTradingDays)) ? Number(input.minimumTradingDays) : undefined,
+    startDate: isPropFirm ? input.startDate || undefined : undefined,
+    propStatus: isPropFirm ? input.propStatus : undefined,
     symbol: input.symbol.trim().toUpperCase(),
     setup: "Manual trade",
     setupTag: input.setupTag,

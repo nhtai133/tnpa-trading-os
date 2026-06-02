@@ -13,10 +13,14 @@ import { writeTradeJournalOverride } from "@/app/_lib/trade-journal-storage";
 import { useTradingDataset } from "@/app/_lib/use-trading-dataset";
 import type {
   AccountType,
+  ChallengeType,
   EquityPoint,
   MonthlyPerformance,
   Mt5AccountReport,
   Playbook,
+  PropAccountStatus,
+  PropFirmName,
+  PropPhase,
   SetupTag,
   StrategyType,
   TradeJournal,
@@ -25,10 +29,14 @@ import type {
 import {
   accountTypes,
   brokerAccountNames,
+  challengeTypes,
   emotionOptions,
   mistakeOptions,
   playbooks,
+  propAccountStatuses,
   propFirmAccountNames,
+  propFirmNames,
+  propPhases,
   setupTags,
   strategyTypes,
 } from "@/app/_lib/trading-types";
@@ -37,9 +45,19 @@ const pageSize = 8;
 
 const initialManualTrade: ManualTradeInput = {
   status: "Closed",
-  accountType: "Broker",
-  accountName: "ICMarkets Swing",
+  accountType: "broker",
+  accountName: "ICMarkets",
   strategyType: "Swing",
+  firmName: "FTMO",
+  accountSize: "100000",
+  challengeType: "2-Step Challenge",
+  phase: "Phase 1",
+  profitTargetPercent: "10",
+  dailyLossLimitPercent: "5",
+  maxLossLimitPercent: "10",
+  minimumTradingDays: "4",
+  startDate: "",
+  propStatus: "Active",
   symbol: "",
   side: "Long",
   openTime: "",
@@ -59,9 +77,19 @@ const initialManualTrade: ManualTradeInput = {
 function manualTradeInputFromTrade(trade: Trade): ManualTradeInput {
   return {
     status: trade.status,
-    accountType: trade.accountType ?? "Broker",
-    accountName: trade.accountName ?? "ICMarkets Swing",
+    accountType: trade.accountType ?? "broker",
+    accountName: trade.accountName ?? "ICMarkets",
     strategyType: trade.strategyType ?? "Swing",
+    firmName: trade.firmName ?? "FTMO",
+    accountSize: String(trade.accountSize ?? 100000),
+    challengeType: trade.challengeType ?? "2-Step Challenge",
+    phase: trade.phase ?? "Phase 1",
+    profitTargetPercent: String(trade.profitTargetPercent ?? 10),
+    dailyLossLimitPercent: String(trade.dailyLossLimitPercent ?? 5),
+    maxLossLimitPercent: String(trade.maxLossLimitPercent ?? 10),
+    minimumTradingDays: String(trade.minimumTradingDays ?? 4),
+    startDate: trade.startDate ?? "",
+    propStatus: trade.propStatus ?? "Active",
     symbol: trade.symbol,
     side: trade.side,
     entryScreenshot: trade.entryScreenshot,
@@ -104,11 +132,11 @@ function uniqueValues(
 }
 
 function accountNameOptions(accountType: string) {
-  if (accountType === "Prop Firm") {
+  if (accountType === "prop-firm") {
     return [...propFirmAccountNames];
   }
 
-  if (accountType === "Broker") {
+  if (accountType === "broker") {
     return [...brokerAccountNames];
   }
 
@@ -118,6 +146,18 @@ function accountNameOptions(accountType: string) {
 function money(value: number) {
   const sign = value >= 0 ? "+" : "-";
   return `${sign}$${Math.abs(value).toLocaleString()}`;
+}
+
+function optionLabel(value: string) {
+  if (value === "prop-firm") {
+    return "Prop Firm";
+  }
+
+  if (value === "broker") {
+    return "Broker";
+  }
+
+  return value;
 }
 
 function SelectFilter({
@@ -146,7 +186,7 @@ function SelectFilter({
         {includeAll ? <option value="">All</option> : null}
         {options.map((option) => (
           <option key={option} value={option}>
-            {option}
+            {optionLabel(option)}
           </option>
         ))}
       </select>
@@ -308,6 +348,22 @@ function TradeReviewDrawer({
         return;
       }
 
+      if (
+        manualDraft.accountType === "prop-firm" &&
+        (!manualDraft.firmName ||
+          !manualDraft.challengeType ||
+          !manualDraft.phase ||
+          !manualDraft.accountSize.trim() ||
+          !manualDraft.profitTargetPercent.trim() ||
+          !manualDraft.dailyLossLimitPercent.trim() ||
+          !manualDraft.maxLossLimitPercent.trim() ||
+          !manualDraft.minimumTradingDays.trim() ||
+          !manualDraft.propStatus)
+      ) {
+        setError("Prop firm challenge metadata is required.");
+        return;
+      }
+
       if (manualDraft.status === "Closed" && !manualDraft.closeTime) {
         setError("Close Time is required for closed trades.");
         return;
@@ -411,8 +467,9 @@ function TradeReviewDrawer({
                 updateManualDraft("accountType", value as AccountType);
                 updateManualDraft(
                   "accountName",
-                  value === "Prop Firm" ? "FTMO Intraweek" : "ICMarkets Swing",
+                  value === "prop-firm" ? "FTMO" : "ICMarkets",
                 );
+                updateManualDraft("strategyType", value === "prop-firm" ? "Intraweek" : "Swing");
               }}
               includeAll={false}
             />
@@ -430,6 +487,69 @@ function TradeReviewDrawer({
               onChange={(value) => updateManualDraft("strategyType", value as StrategyType)}
               includeAll={false}
             />
+            {manualDraft.accountType === "prop-firm" ? (
+              <>
+                <SelectFilter
+                  label="Firm Name"
+                  options={[...propFirmNames]}
+                  value={manualDraft.firmName}
+                  onChange={(value) => updateManualDraft("firmName", value as PropFirmName)}
+                  includeAll={false}
+                />
+                <TextInputField
+                  label="Account Size"
+                  value={manualDraft.accountSize}
+                  onChange={(value) => updateManualDraft("accountSize", value)}
+                />
+                <SelectFilter
+                  label="Challenge Type"
+                  options={[...challengeTypes]}
+                  value={manualDraft.challengeType}
+                  onChange={(value) => updateManualDraft("challengeType", value as ChallengeType)}
+                  includeAll={false}
+                />
+                <SelectFilter
+                  label="Phase"
+                  options={[...propPhases]}
+                  value={manualDraft.phase}
+                  onChange={(value) => updateManualDraft("phase", value as PropPhase)}
+                  includeAll={false}
+                />
+                <TextInputField
+                  label="Profit Target %"
+                  value={manualDraft.profitTargetPercent}
+                  onChange={(value) => updateManualDraft("profitTargetPercent", value)}
+                />
+                <TextInputField
+                  label="Daily Loss Limit %"
+                  value={manualDraft.dailyLossLimitPercent}
+                  onChange={(value) => updateManualDraft("dailyLossLimitPercent", value)}
+                />
+                <TextInputField
+                  label="Max Loss Limit %"
+                  value={manualDraft.maxLossLimitPercent}
+                  onChange={(value) => updateManualDraft("maxLossLimitPercent", value)}
+                />
+                <TextInputField
+                  label="Minimum Trading Days"
+                  value={manualDraft.minimumTradingDays}
+                  onChange={(value) => updateManualDraft("minimumTradingDays", value)}
+                />
+                <TextInputField
+                  label="Start Date"
+                  type="date"
+                  value={manualDraft.startDate}
+                  onChange={(value) => updateManualDraft("startDate", value)}
+                />
+                <SelectFilter
+                  label="Status"
+                  options={[...propAccountStatuses]}
+                  value={manualDraft.propStatus}
+                  onChange={(value) => updateManualDraft("propStatus", value as PropAccountStatus)}
+                  includeAll={false}
+                />
+              </>
+            ) : null}
             <SelectFilter
               label="Trade Status"
               options={["Open", "Closed"]}
@@ -595,8 +715,29 @@ function TradeReviewDrawer({
   );
 }
 
-function CreateTradeDrawer({ onClose }: { onClose: () => void }) {
-  const [draft, setDraft] = useState<ManualTradeInput>(initialManualTrade);
+function manualTradeDefaults(accountType: AccountType = "broker"): ManualTradeInput {
+  if (accountType === "prop-firm") {
+    return {
+      ...initialManualTrade,
+      accountType: "prop-firm",
+      accountName: "FTMO",
+      strategyType: "Intraweek",
+    };
+  }
+
+  return initialManualTrade;
+}
+
+function CreateTradeDrawer({
+  defaultAccountType = "broker",
+  onClose,
+}: {
+  defaultAccountType?: AccountType;
+  onClose: () => void;
+}) {
+  const [draft, setDraft] = useState<ManualTradeInput>(
+    manualTradeDefaults(defaultAccountType),
+  );
   const [error, setError] = useState("");
 
   function updateDraft(key: keyof ManualTradeInput, value: string) {
@@ -616,6 +757,22 @@ function CreateTradeDrawer({ onClose }: { onClose: () => void }) {
 
     if (!draft.accountType || !draft.accountName || !draft.strategyType) {
       setError("Account Type, Account Name, and Strategy Type are required.");
+      return;
+    }
+
+    if (
+      draft.accountType === "prop-firm" &&
+      (!draft.firmName ||
+        !draft.challengeType ||
+        !draft.phase ||
+        !draft.accountSize.trim() ||
+        !draft.profitTargetPercent.trim() ||
+        !draft.dailyLossLimitPercent.trim() ||
+        !draft.maxLossLimitPercent.trim() ||
+        !draft.minimumTradingDays.trim() ||
+        !draft.propStatus)
+    ) {
+      setError("Prop firm challenge metadata is required.");
       return;
     }
 
@@ -697,8 +854,9 @@ function CreateTradeDrawer({ onClose }: { onClose: () => void }) {
               updateDraft("accountType", value as AccountType);
               updateDraft(
                 "accountName",
-                value === "Prop Firm" ? "FTMO Intraweek" : "ICMarkets Swing",
+                value === "prop-firm" ? "FTMO" : "ICMarkets",
               );
+              updateDraft("strategyType", value === "prop-firm" ? "Intraweek" : "Swing");
             }}
             includeAll={false}
           />
@@ -716,6 +874,69 @@ function CreateTradeDrawer({ onClose }: { onClose: () => void }) {
             onChange={(value) => updateDraft("strategyType", value as StrategyType)}
             includeAll={false}
           />
+          {draft.accountType === "prop-firm" ? (
+            <>
+              <SelectFilter
+                label="Firm Name"
+                options={[...propFirmNames]}
+                value={draft.firmName}
+                onChange={(value) => updateDraft("firmName", value as PropFirmName)}
+                includeAll={false}
+              />
+              <TextInputField
+                label="Account Size"
+                value={draft.accountSize}
+                onChange={(value) => updateDraft("accountSize", value)}
+              />
+              <SelectFilter
+                label="Challenge Type"
+                options={[...challengeTypes]}
+                value={draft.challengeType}
+                onChange={(value) => updateDraft("challengeType", value as ChallengeType)}
+                includeAll={false}
+              />
+              <SelectFilter
+                label="Phase"
+                options={[...propPhases]}
+                value={draft.phase}
+                onChange={(value) => updateDraft("phase", value as PropPhase)}
+                includeAll={false}
+              />
+              <TextInputField
+                label="Profit Target %"
+                value={draft.profitTargetPercent}
+                onChange={(value) => updateDraft("profitTargetPercent", value)}
+              />
+              <TextInputField
+                label="Daily Loss Limit %"
+                value={draft.dailyLossLimitPercent}
+                onChange={(value) => updateDraft("dailyLossLimitPercent", value)}
+              />
+              <TextInputField
+                label="Max Loss Limit %"
+                value={draft.maxLossLimitPercent}
+                onChange={(value) => updateDraft("maxLossLimitPercent", value)}
+              />
+              <TextInputField
+                label="Minimum Trading Days"
+                value={draft.minimumTradingDays}
+                onChange={(value) => updateDraft("minimumTradingDays", value)}
+              />
+              <TextInputField
+                label="Start Date"
+                type="date"
+                value={draft.startDate}
+                onChange={(value) => updateDraft("startDate", value)}
+              />
+              <SelectFilter
+                label="Status"
+                options={[...propAccountStatuses]}
+                value={draft.propStatus}
+                onChange={(value) => updateDraft("propStatus", value as PropAccountStatus)}
+                includeAll={false}
+              />
+            </>
+          ) : null}
           <SelectFilter
             label="Trade Status"
             options={["Open", "Closed"]}
@@ -840,12 +1061,18 @@ export function TradesModule({
   fallbackEquityCurve,
   fallbackMonthlyPerformance,
   initialReport,
+  scopeAccountType,
   trades,
+  title = "Trades",
+  eyebrow = "Execution Database",
 }: {
   fallbackEquityCurve: EquityPoint[];
   fallbackMonthlyPerformance: MonthlyPerformance[];
   initialReport: Mt5AccountReport | null;
+  scopeAccountType?: AccountType;
   trades: Trade[];
+  title?: string;
+  eyebrow?: string;
 }) {
   const { tradeHistory } = useTradingDataset({
     fallbackEquityCurve,
@@ -856,7 +1083,7 @@ export function TradesModule({
   const [query, setQuery] = useState("");
   const [activeTab, setActiveTab] = useState<TradeTab>("all");
   const [filters, setFilters] = useState<FilterState>({
-    accountType: "",
+    accountType: scopeAccountType ?? "",
     accountName: "",
     strategyType: "",
     symbol: "",
@@ -869,15 +1096,22 @@ export function TradesModule({
   const [selectedTrade, setSelectedTrade] = useState<Trade | null>(null);
   const [creatingTrade, setCreatingTrade] = useState(false);
 
-  const symbols = useMemo(() => uniqueValues(tradeHistory, "symbol"), [tradeHistory]);
-  const accountTypeOptions = useMemo(() => uniqueValues(tradeHistory, "accountType"), [tradeHistory]);
-  const accountNameFilterOptions = useMemo(() => uniqueValues(tradeHistory, "accountName"), [tradeHistory]);
-  const strategyTypeOptions = useMemo(() => uniqueValues(tradeHistory, "strategyType"), [tradeHistory]);
-  const setupTagOptions = useMemo(() => uniqueValues(tradeHistory, "setupTag"), [tradeHistory]);
-  const playbookOptions = useMemo(() => uniqueValues(tradeHistory, "playbook"), [tradeHistory]);
+  const scopedTradeHistory = useMemo(
+    () =>
+      scopeAccountType
+        ? tradeHistory.filter((trade) => trade.accountType === scopeAccountType)
+        : tradeHistory,
+    [scopeAccountType, tradeHistory],
+  );
+  const symbols = useMemo(() => uniqueValues(scopedTradeHistory, "symbol"), [scopedTradeHistory]);
+  const accountTypeOptions = useMemo(() => uniqueValues(scopedTradeHistory, "accountType"), [scopedTradeHistory]);
+  const accountNameFilterOptions = useMemo(() => uniqueValues(scopedTradeHistory, "accountName"), [scopedTradeHistory]);
+  const strategyTypeOptions = useMemo(() => uniqueValues(scopedTradeHistory, "strategyType"), [scopedTradeHistory]);
+  const setupTagOptions = useMemo(() => uniqueValues(scopedTradeHistory, "setupTag"), [scopedTradeHistory]);
+  const playbookOptions = useMemo(() => uniqueValues(scopedTradeHistory, "playbook"), [scopedTradeHistory]);
 
   const tabTrades = useMemo(() => {
-    return tradeHistory.filter((trade) => {
+    return scopedTradeHistory.filter((trade) => {
       const source = String(trade.source ?? "mt5");
       if (activeTab === "mt5") {
         return source === "mt5";
@@ -893,7 +1127,7 @@ export function TradesModule({
 
       return true;
     });
-  }, [activeTab, tradeHistory]);
+  }, [activeTab, scopedTradeHistory]);
 
   const filteredTrades = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -944,8 +1178,8 @@ export function TradesModule({
 
   return (
     <AppShell
-      eyebrow="Execution Database"
-      title="Trades"
+      eyebrow={eyebrow}
+      title={title}
       action={
         <button
           className="rounded-md bg-emerald-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300"
@@ -996,12 +1230,14 @@ export function TradesModule({
               }}
             />
           </label>
-          <SelectFilter
-            label="Account Type"
-            options={accountTypeOptions}
-            value={filters.accountType}
-            onChange={(value) => updateFilter("accountType", value)}
-          />
+          {scopeAccountType ? null : (
+            <SelectFilter
+              label="Account Type"
+              options={accountTypeOptions}
+              value={filters.accountType}
+              onChange={(value) => updateFilter("accountType", value)}
+            />
+          )}
           <SelectFilter
             label="Account Name"
             options={accountNameFilterOptions}
@@ -1062,7 +1298,7 @@ export function TradesModule({
             onClick={() => {
               setQuery("");
               setFilters({
-                accountType: "",
+                accountType: scopeAccountType ?? "",
                 accountName: "",
                 strategyType: "",
                 symbol: "",
@@ -1135,7 +1371,7 @@ export function TradesModule({
                         {trade.accountName ?? "Unassigned"}
                       </div>
                       <div className="mt-1 text-xs text-slate-500">
-                        {trade.accountType ?? "Broker"}
+                        {optionLabel(trade.accountType ?? "broker")}
                       </div>
                     </td>
                     <td className="px-5 py-4">{trade.strategyType ?? "Swing"}</td>
@@ -1252,7 +1488,10 @@ export function TradesModule({
         />
       ) : null}
       {creatingTrade ? (
-        <CreateTradeDrawer onClose={() => setCreatingTrade(false)} />
+        <CreateTradeDrawer
+          defaultAccountType={scopeAccountType}
+          onClose={() => setCreatingTrade(false)}
+        />
       ) : null}
     </AppShell>
   );

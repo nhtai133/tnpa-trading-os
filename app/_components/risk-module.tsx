@@ -5,6 +5,7 @@ import { buildRiskMetrics, type DailyRiskMetric } from "@/app/_lib/risk-metrics"
 import { useRiskSettings } from "@/app/_lib/use-risk-settings";
 import { useTradingDataset } from "@/app/_lib/use-trading-dataset";
 import type {
+  AccountType,
   EquityPoint,
   MonthlyPerformance,
   Mt5AccountReport,
@@ -132,11 +133,17 @@ export function RiskModule({
   fallbackMonthlyPerformance,
   initialReport,
   initialTrades,
+  scopeAccountType,
+  title = "Risk Monitor",
+  eyebrow = "FTMO Discipline Layer",
 }: {
   fallbackEquityCurve: EquityPoint[];
   fallbackMonthlyPerformance: MonthlyPerformance[];
   initialReport: Mt5AccountReport | null;
   initialTrades: Trade[];
+  scopeAccountType?: AccountType;
+  title?: string;
+  eyebrow?: string;
 }) {
   const settings = useRiskSettings();
   const { accountReport, tradeHistory } = useTradingDataset({
@@ -145,7 +152,10 @@ export function RiskModule({
     initialReport,
     initialTrades,
   });
-  const riskTrades = tradeHistory.filter((trade) => {
+  const scopedTradeHistory = scopeAccountType
+    ? tradeHistory.filter((trade) => trade.accountType === scopeAccountType)
+    : tradeHistory;
+  const riskTrades = scopedTradeHistory.filter((trade) => {
     const source = String(trade.source ?? "mt5");
     return source === "mt5" || (source === "manual" && trade.status === "Open");
   });
@@ -154,21 +164,31 @@ export function RiskModule({
     settings,
     trades: riskTrades,
   });
-  const mt5Trades = tradeHistory.filter((trade) => String(trade.source ?? "mt5") === "mt5");
-  const manualTrades = tradeHistory.filter((trade) => String(trade.source ?? "mt5") === "manual");
+  const mt5Trades = scopedTradeHistory.filter((trade) => String(trade.source ?? "mt5") === "mt5");
+  const manualTrades = scopedTradeHistory.filter((trade) => String(trade.source ?? "mt5") === "manual");
   const manualOpenTrades = manualTrades.filter((trade) => trade.status === "Open");
   const manualClosedTrades = manualTrades.filter((trade) => trade.status !== "Open");
+  const selectedPropTrade = scopeAccountType === "prop-firm" ? scopedTradeHistory[0] : null;
 
   return (
     <AppShell
-      eyebrow="FTMO Discipline Layer"
-      title="Risk Monitor"
+      eyebrow={eyebrow}
+      title={title}
       action={
         <div className={`rounded-md border px-4 py-2 text-sm font-semibold ${riskTone(risk.riskLevel)}`}>
           {risk.riskLevel}
         </div>
       }
     >
+      {selectedPropTrade ? (
+        <section className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <MetricCard label="Challenge Status" value={selectedPropTrade.propStatus ?? "Active"} />
+          <MetricCard label="Challenge Type" value={selectedPropTrade.challengeType ?? "2-Step Challenge"} />
+          <MetricCard label="Phase" value={selectedPropTrade.phase ?? "Phase 1"} />
+          <MetricCard label="Account Size" value={money(selectedPropTrade.accountSize ?? risk.accountBalance)} />
+        </section>
+      ) : null}
+
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Account Balance" value={money(risk.accountBalance)} />
         <MetricCard label="Equity" value={money(risk.equity)} />

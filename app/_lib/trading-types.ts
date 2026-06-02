@@ -17,8 +17,12 @@ export type MonthlyPerformance = {
 
 export type TradeSource = "mt5" | "manual";
 
-export const accountTypes = ["Prop Firm", "Broker"] as const;
+export const accountTypes = ["prop-firm", "broker"] as const;
 export type AccountType = (typeof accountTypes)[number];
+
+export function accountTypeLabel(accountType: AccountType) {
+  return accountType === "prop-firm" ? "Prop Firm" : "Broker";
+}
 
 export const strategyTypes = [
   "Intraweek",
@@ -31,24 +35,51 @@ export const strategyTypes = [
 export type StrategyType = (typeof strategyTypes)[number];
 
 export const propFirmAccountNames = [
-  "FTMO Intraweek",
-  "FTMO Challenge V1",
-  "FTMO Challenge V2",
-  "Other Prop Firms",
+  "FTMO",
+  "Funding Pips",
+  "The5ers",
+  "Other",
 ] as const;
 
 export const brokerAccountNames = [
-  "Exness Swing",
-  "ICMarkets Swing",
-  "XM Swing",
-  "HFM Swing",
-  "Other Brokers",
+  "Exness",
+  "ICMarkets",
+  "XM",
+  "HFM",
+  "Other",
 ] as const;
+
+export const challengeTypes = [
+  "1-Step Challenge",
+  "2-Step Challenge",
+  "Funded Account",
+  "Other",
+] as const;
+export type ChallengeType = (typeof challengeTypes)[number];
+
+export const propFirmNames = ["FTMO", "Funding Pips", "The5ers", "Other"] as const;
+export type PropFirmName = (typeof propFirmNames)[number];
+
+export const propPhases = ["Phase 1", "Phase 2", "Funded"] as const;
+export type PropPhase = (typeof propPhases)[number];
+
+export const propAccountStatuses = ["Active", "Passed", "Failed", "Archived"] as const;
+export type PropAccountStatus = (typeof propAccountStatuses)[number];
 
 export type TradingAccount = {
   accountType: AccountType;
   accountName: string;
   strategyType: StrategyType;
+  firmName?: PropFirmName;
+  accountSize?: number;
+  challengeType?: ChallengeType;
+  phase?: PropPhase;
+  profitTargetPercent?: number;
+  dailyLossLimitPercent?: number;
+  maxLossLimitPercent?: number;
+  minimumTradingDays?: number;
+  startDate?: string;
+  propStatus?: PropAccountStatus;
 };
 
 export const setupTags = [
@@ -118,6 +149,16 @@ export type Trade = {
   accountType?: AccountType;
   accountName?: string;
   strategyType?: StrategyType;
+  firmName?: PropFirmName;
+  accountSize?: number;
+  challengeType?: ChallengeType;
+  phase?: PropPhase;
+  profitTargetPercent?: number;
+  dailyLossLimitPercent?: number;
+  maxLossLimitPercent?: number;
+  minimumTradingDays?: number;
+  startDate?: string;
+  propStatus?: PropAccountStatus;
   symbol: string;
   setup: string;
   setupTag: SetupTag;
@@ -144,6 +185,16 @@ export type Mt5AccountReport = {
   accountType?: AccountType;
   accountName?: string;
   strategyType?: StrategyType;
+  firmName?: PropFirmName;
+  accountSize?: number;
+  challengeType?: ChallengeType;
+  phase?: PropPhase;
+  profitTargetPercent?: number;
+  dailyLossLimitPercent?: number;
+  maxLossLimitPercent?: number;
+  minimumTradingDays?: number;
+  startDate?: string;
+  propStatus?: PropAccountStatus;
   name: string;
   account: string;
   company: string;

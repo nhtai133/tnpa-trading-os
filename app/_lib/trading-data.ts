@@ -387,9 +387,19 @@ const sourceTradeHistory: TradeWithOptionalPlaybook[] = (
 export const tradeHistory: Trade[] = sourceTradeHistory.map((trade) => ({
   ...trade,
   source: trade.source ?? "mt5",
-  accountType: trade.accountType ?? importedMt5Report?.accountType ?? "Prop Firm",
-  accountName: trade.accountName ?? importedMt5Report?.accountName ?? importedMt5Report?.name ?? "FTMO Intraweek",
+  accountType: trade.accountType ?? importedMt5Report?.accountType ?? "prop-firm",
+  accountName: trade.accountName ?? importedMt5Report?.accountName ?? importedMt5Report?.name ?? "FTMO",
   strategyType: trade.strategyType ?? importedMt5Report?.strategyType ?? "Intraweek",
+  firmName: trade.firmName ?? importedMt5Report?.firmName ?? "FTMO",
+  accountSize: trade.accountSize ?? importedMt5Report?.accountSize ?? 100000,
+  challengeType: trade.challengeType ?? importedMt5Report?.challengeType ?? "2-Step Challenge",
+  phase: trade.phase ?? importedMt5Report?.phase ?? "Phase 1",
+  profitTargetPercent: trade.profitTargetPercent ?? importedMt5Report?.profitTargetPercent ?? 10,
+  dailyLossLimitPercent: trade.dailyLossLimitPercent ?? importedMt5Report?.dailyLossLimitPercent ?? 5,
+  maxLossLimitPercent: trade.maxLossLimitPercent ?? importedMt5Report?.maxLossLimitPercent ?? 10,
+  minimumTradingDays: trade.minimumTradingDays ?? importedMt5Report?.minimumTradingDays ?? 4,
+  startDate: trade.startDate ?? importedMt5Report?.startDate,
+  propStatus: trade.propStatus ?? importedMt5Report?.propStatus ?? "Active",
   setupTag: trade.setupTag ?? getDefaultSetupTag(trade.setup),
   playbook:
     trade.playbook ??

@@ -8,11 +8,24 @@ import {
   writeStoredMt5Report,
 } from "@/app/_lib/mt5-local-storage";
 import { parseMt5ReportHtml } from "@/app/_lib/mt5-parser-core";
-import type { AccountType, Mt5AccountReport, StrategyType } from "@/app/_lib/trading-types";
+import type {
+  AccountType,
+  ChallengeType,
+  Mt5AccountReport,
+  PropAccountStatus,
+  PropFirmName,
+  PropPhase,
+  StrategyType,
+} from "@/app/_lib/trading-types";
 import {
+  accountTypeLabel,
   accountTypes,
   brokerAccountNames,
+  challengeTypes,
+  propAccountStatuses,
   propFirmAccountNames,
+  propFirmNames,
+  propPhases,
   strategyTypes,
 } from "@/app/_lib/trading-types";
 
@@ -44,39 +57,91 @@ function decodeFileBuffer(buffer: ArrayBuffer) {
 }
 
 function accountNameOptions(accountType: AccountType) {
-  return accountType === "Prop Firm" ? [...propFirmAccountNames] : [...brokerAccountNames];
+  return accountType === "prop-firm" ? [...propFirmAccountNames] : [...brokerAccountNames];
 }
 
 function assignAccountToReport({
   accountName,
   accountType,
+  accountSize,
+  challengeType,
+  dailyLossLimitPercent,
+  firmName,
+  maxLossLimitPercent,
+  minimumTradingDays,
+  phase,
+  profitTargetPercent,
+  propStatus,
   report,
+  startDate,
   strategyType,
 }: {
   accountName: string;
   accountType: AccountType;
+  accountSize: number;
+  challengeType: ChallengeType;
+  dailyLossLimitPercent: number;
+  firmName: PropFirmName;
+  maxLossLimitPercent: number;
+  minimumTradingDays: number;
+  phase: PropPhase;
+  profitTargetPercent: number;
+  propStatus: PropAccountStatus;
   report: Mt5AccountReport;
+  startDate: string;
   strategyType: StrategyType;
 }): Mt5AccountReport {
+  const isPropFirm = accountType === "prop-firm";
+
   return {
     ...report,
     accountType,
     accountName,
     strategyType,
+    firmName: isPropFirm ? firmName : undefined,
+    accountSize: isPropFirm ? accountSize : undefined,
+    challengeType: isPropFirm ? challengeType : undefined,
+    phase: isPropFirm ? phase : undefined,
+    profitTargetPercent: isPropFirm ? profitTargetPercent : undefined,
+    dailyLossLimitPercent: isPropFirm ? dailyLossLimitPercent : undefined,
+    maxLossLimitPercent: isPropFirm ? maxLossLimitPercent : undefined,
+    minimumTradingDays: isPropFirm ? minimumTradingDays : undefined,
+    startDate: isPropFirm ? startDate : undefined,
+    propStatus: isPropFirm ? propStatus : undefined,
     trades: report.trades.map((trade) => ({
       ...trade,
       source: "mt5",
       accountType,
       accountName,
       strategyType,
+      firmName: isPropFirm ? firmName : undefined,
+      accountSize: isPropFirm ? accountSize : undefined,
+      challengeType: isPropFirm ? challengeType : undefined,
+      phase: isPropFirm ? phase : undefined,
+      profitTargetPercent: isPropFirm ? profitTargetPercent : undefined,
+      dailyLossLimitPercent: isPropFirm ? dailyLossLimitPercent : undefined,
+      maxLossLimitPercent: isPropFirm ? maxLossLimitPercent : undefined,
+      minimumTradingDays: isPropFirm ? minimumTradingDays : undefined,
+      startDate: isPropFirm ? startDate : undefined,
+      propStatus: isPropFirm ? propStatus : undefined,
     })),
   };
 }
 
 export function ImportMt5Module({
+  defaultAccountType,
+  eyebrow = "Broker Sync",
   initialReport,
+  lockAccountType = false,
+  requirePropMetadata = false,
+  title = "Import MT5",
 }: {
+  defaultAccountType?: AccountType;
+  eyebrow?: string;
   initialReport: Mt5AccountReport | null;
+  lockAccountType?: boolean;
+  requirePropMetadata?: boolean;
+  title?: string;
 }) {
   const storedReport = useSyncExternalStore(
     subscribeToStoredMt5Report,
@@ -90,13 +155,43 @@ export function ImportMt5Module({
   const report = uploadedReport ?? storedReport ?? initialReport;
   const [selectedFileName, setSelectedFileName] = useState("");
   const [accountType, setAccountType] = useState<AccountType>(
-    report?.accountType ?? "Prop Firm",
+    defaultAccountType ?? report?.accountType ?? "prop-firm",
   );
   const [accountName, setAccountName] = useState(
-    report?.accountName ?? "FTMO Intraweek",
+    defaultAccountType === "prop-firm" ? "FTMO" : report?.accountName ?? "FTMO",
   );
   const [strategyType, setStrategyType] = useState<StrategyType>(
-    report?.strategyType ?? "Intraweek",
+    defaultAccountType === "prop-firm" ? "Intraweek" : report?.strategyType ?? "Intraweek",
+  );
+  const [firmName, setFirmName] = useState<PropFirmName>(
+    defaultAccountType === "prop-firm" ? "FTMO" : report?.firmName ?? "FTMO",
+  );
+  const [accountSize, setAccountSize] = useState(
+    String(defaultAccountType === "prop-firm" ? 100000 : report?.accountSize ?? 100000),
+  );
+  const [challengeType, setChallengeType] = useState<ChallengeType>(
+    defaultAccountType === "prop-firm" ? "2-Step Challenge" : report?.challengeType ?? "2-Step Challenge",
+  );
+  const [phase, setPhase] = useState<PropPhase>(
+    defaultAccountType === "prop-firm" ? "Phase 1" : report?.phase ?? "Phase 1",
+  );
+  const [profitTargetPercent, setProfitTargetPercent] = useState(
+    String(defaultAccountType === "prop-firm" ? 10 : report?.profitTargetPercent ?? 10),
+  );
+  const [dailyLossLimitPercent, setDailyLossLimitPercent] = useState(
+    String(defaultAccountType === "prop-firm" ? 5 : report?.dailyLossLimitPercent ?? 5),
+  );
+  const [maxLossLimitPercent, setMaxLossLimitPercent] = useState(
+    String(defaultAccountType === "prop-firm" ? 10 : report?.maxLossLimitPercent ?? 10),
+  );
+  const [minimumTradingDays, setMinimumTradingDays] = useState(
+    String(defaultAccountType === "prop-firm" ? 4 : report?.minimumTradingDays ?? 4),
+  );
+  const [startDate, setStartDate] = useState(
+    defaultAccountType === "prop-firm" ? "" : report?.startDate ?? "",
+  );
+  const [propStatus, setPropStatus] = useState<PropAccountStatus>(
+    defaultAccountType === "prop-firm" ? "Active" : report?.propStatus ?? "Active",
   );
   const [status, setStatus] = useState<ImportState>(
     report ? "success" : "idle",
@@ -127,6 +222,36 @@ export function ImportMt5Module({
       return;
     }
 
+    if (!accountName || !strategyType || (accountType === "prop-firm" && (!challengeType || !phase))) {
+      setStatus("error");
+      setErrorMessage("Account assignment is required before importing.");
+      return;
+    }
+
+    if (
+      requirePropMetadata &&
+      accountType === "prop-firm" &&
+      (!firmName ||
+        !challengeType ||
+        !phase ||
+        !accountName ||
+        !strategyType ||
+        !accountSize.trim() ||
+        !Number.isFinite(Number(accountSize)) ||
+        !profitTargetPercent.trim() ||
+        !Number.isFinite(Number(profitTargetPercent)) ||
+        !dailyLossLimitPercent.trim() ||
+        !Number.isFinite(Number(dailyLossLimitPercent)) ||
+        !maxLossLimitPercent.trim() ||
+        !Number.isFinite(Number(maxLossLimitPercent)) ||
+        !minimumTradingDays.trim() ||
+        !Number.isFinite(Number(minimumTradingDays)))
+    ) {
+      setStatus("error");
+      setErrorMessage("Firm name, challenge type, phase, account size, account name, and strategy type are required.");
+      return;
+    }
+
     const reader = new FileReader();
 
     reader.onload = () => {
@@ -141,7 +266,17 @@ export function ImportMt5Module({
         const parsedReport = assignAccountToReport({
           accountName,
           accountType,
+          accountSize: Number(accountSize),
+          challengeType,
+          dailyLossLimitPercent: Number(dailyLossLimitPercent),
+          firmName,
+          maxLossLimitPercent: Number(maxLossLimitPercent),
+          minimumTradingDays: Number(minimumTradingDays),
+          phase,
+          profitTargetPercent: Number(profitTargetPercent),
+          propStatus,
           report: parseMt5ReportHtml(html, file.name),
+          startDate,
           strategyType,
         });
         console.log(
@@ -173,8 +308,8 @@ export function ImportMt5Module({
 
   return (
     <AppShell
-      eyebrow="Broker Sync"
-      title="Import MT5"
+      eyebrow={eyebrow}
+      title={title}
       action={
         <button
           className="rounded-md bg-emerald-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300"
@@ -237,16 +372,17 @@ export function ImportMt5Module({
             <select
               className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
               value={accountType}
+              disabled={lockAccountType}
               onChange={(event) => {
                 const nextType = event.target.value as AccountType;
                 setAccountType(nextType);
-                setAccountName(nextType === "Prop Firm" ? "FTMO Intraweek" : "ICMarkets Swing");
-                setStrategyType(nextType === "Prop Firm" ? "Intraweek" : "Swing");
+                setAccountName(nextType === "prop-firm" ? "FTMO" : "ICMarkets");
+                setStrategyType(nextType === "prop-firm" ? "Intraweek" : "Swing");
               }}
             >
               {accountTypes.map((option) => (
                 <option key={option} value={option}>
-                  {option}
+                  {accountTypeLabel(option)}
                 </option>
               ))}
             </select>
@@ -284,6 +420,113 @@ export function ImportMt5Module({
             </select>
           </label>
         </div>
+
+        {accountType === "prop-firm" ? (
+          <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+            <label className="block">
+              <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                Firm Name
+              </span>
+              <select
+                className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
+                value={firmName}
+                onChange={(event) => setFirmName(event.target.value as PropFirmName)}
+              >
+                {propFirmNames.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                Account Size
+              </span>
+              <input
+                className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
+                value={accountSize}
+                onChange={(event) => setAccountSize(event.target.value)}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                Challenge Type
+              </span>
+              <select
+                className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
+                value={challengeType}
+                onChange={(event) => setChallengeType(event.target.value as ChallengeType)}
+              >
+                {challengeTypes.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                Phase
+              </span>
+              <select
+                className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
+                value={phase}
+                onChange={(event) => setPhase(event.target.value as PropPhase)}
+              >
+                {propPhases.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                Status
+              </span>
+              <select
+                className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
+                value={propStatus}
+                onChange={(event) => setPropStatus(event.target.value as PropAccountStatus)}
+              >
+                {propAccountStatuses.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {[
+              ["Profit Target %", profitTargetPercent, setProfitTargetPercent],
+              ["Daily Loss Limit %", dailyLossLimitPercent, setDailyLossLimitPercent],
+              ["Max Loss Limit %", maxLossLimitPercent, setMaxLossLimitPercent],
+              ["Minimum Trading Days", minimumTradingDays, setMinimumTradingDays],
+            ].map(([label, value, setter]) => (
+              <label className="block" key={label as string}>
+                <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  {label as string}
+                </span>
+                <input
+                  className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
+                  value={value as string}
+                  onChange={(event) => (setter as (next: string) => void)(event.target.value)}
+                />
+              </label>
+            ))}
+            <label className="block">
+              <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                Start Date
+              </span>
+              <input
+                className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
+                type="date"
+                value={startDate}
+                onChange={(event) => setStartDate(event.target.value)}
+              />
+            </label>
+          </div>
+        ) : null}
 
         <div className="mt-5 grid gap-3 sm:grid-cols-3">
           <div className="rounded-md border border-white/10 bg-white/[0.03] p-4">
@@ -345,7 +588,9 @@ export function ImportMt5Module({
             {[
               ["Account Name", report.name],
               ["Trading Account", report.accountName ?? accountName],
-              ["Account Type", report.accountType ?? accountType],
+              ["Account Type", accountTypeLabel(report.accountType ?? accountType)],
+              ["Challenge Type", report.challengeType ?? challengeType],
+              ["Phase", report.phase ?? phase],
               ["Strategy Type", report.strategyType ?? strategyType],
               ["Company", report.company],
               ["Generated", report.generatedAt],

@@ -4,6 +4,7 @@ import { AppShell } from "@/app/_components/app-shell";
 import { useState } from "react";
 import { useTradingDataset } from "@/app/_lib/use-trading-dataset";
 import type {
+  AccountType,
   EquityPoint,
   MonthlyPerformance,
   Mt5AccountReport,
@@ -34,6 +35,18 @@ function money(value: number) {
 
 function percent(value: number) {
   return `${value.toFixed(1)}%`;
+}
+
+function optionLabel(value: string) {
+  if (value === "prop-firm") {
+    return "Prop Firm";
+  }
+
+  if (value === "broker") {
+    return "Broker";
+  }
+
+  return value;
 }
 
 function profitFactor(trades: Trade[]) {
@@ -125,7 +138,7 @@ function maxConsecutive(trades: Trade[], result: Trade["result"]) {
 
 function uniqueValues(
   trades: Trade[],
-  key: keyof Pick<Trade, "accountType" | "accountName" | "strategyType">,
+  key: keyof Pick<Trade, "accountType" | "accountName" | "strategyType" | "challengeType" | "phase">,
 ) {
   return Array.from(new Set(trades.map((trade) => trade[key]).filter(Boolean))).sort() as string[];
 }
@@ -416,26 +429,39 @@ export function AnalyticsModule({
   fallbackMonthlyPerformance,
   initialReport,
   initialTrades,
+  scopeAccountType,
+  title = "Analytics",
+  eyebrow = "Performance Intelligence",
 }: {
   fallbackEquityCurve: EquityPoint[];
   fallbackMonthlyPerformance: MonthlyPerformance[];
   initialReport: Mt5AccountReport | null;
   initialTrades: Trade[];
+  scopeAccountType?: AccountType;
+  title?: string;
+  eyebrow?: string;
 }) {
   const [sourceFilter, setSourceFilter] = useState<"all" | "mt5" | "manual">("all");
-  const [accountTypeFilter, setAccountTypeFilter] = useState("");
+  const [accountTypeFilter, setAccountTypeFilter] = useState(scopeAccountType ?? "");
   const [accountNameFilter, setAccountNameFilter] = useState("");
   const [strategyTypeFilter, setStrategyTypeFilter] = useState("");
+  const [challengeTypeFilter, setChallengeTypeFilter] = useState("");
+  const [phaseFilter, setPhaseFilter] = useState("");
   const { tradeHistory } = useTradingDataset({
     fallbackEquityCurve,
     fallbackMonthlyPerformance,
     initialReport,
     initialTrades,
   });
-  const accountTypeOptions = uniqueValues(tradeHistory, "accountType");
-  const accountNameOptions = uniqueValues(tradeHistory, "accountName");
-  const strategyTypeOptions = uniqueValues(tradeHistory, "strategyType");
-  const analyticsTrades = tradeHistory.filter((trade) => {
+  const scopedTradeHistory = scopeAccountType
+    ? tradeHistory.filter((trade) => trade.accountType === scopeAccountType)
+    : tradeHistory;
+  const accountTypeOptions = uniqueValues(scopedTradeHistory, "accountType");
+  const accountNameOptions = uniqueValues(scopedTradeHistory, "accountName");
+  const strategyTypeOptions = uniqueValues(scopedTradeHistory, "strategyType");
+  const challengeTypeOptions = uniqueValues(scopedTradeHistory, "challengeType");
+  const phaseOptions = uniqueValues(scopedTradeHistory, "phase");
+  const analyticsTrades = scopedTradeHistory.filter((trade) => {
     const source = String(trade.source ?? "mt5");
     if (sourceFilter === "mt5") return source === "mt5";
     if (sourceFilter === "manual") return source === "manual";
@@ -445,6 +471,8 @@ export function AnalyticsModule({
       (!accountTypeFilter || trade.accountType === accountTypeFilter) &&
       (!accountNameFilter || trade.accountName === accountNameFilter) &&
       (!strategyTypeFilter || trade.strategyType === strategyTypeFilter) &&
+      (!challengeTypeFilter || trade.challengeType === challengeTypeFilter) &&
+      (!phaseFilter || trade.phase === phaseFilter) &&
       trade.status !== "Open"
     );
   });
@@ -484,8 +512,8 @@ export function AnalyticsModule({
 
   return (
     <AppShell
-      eyebrow="Performance Intelligence"
-      title="Analytics"
+      eyebrow={eyebrow}
+      title={title}
       action={
         <div className="flex items-center gap-3">
           <label className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
@@ -507,24 +535,26 @@ export function AnalyticsModule({
       }
     >
       <section className="mb-6 rounded-md border border-white/10 bg-[#0d121c] p-5 shadow-2xl shadow-black/20">
-        <div className="grid gap-4 md:grid-cols-3">
-          <label className="block">
-            <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-              Account Type
-            </span>
-            <select
-              className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
-              value={accountTypeFilter}
-              onChange={(event) => setAccountTypeFilter(event.target.value)}
-            >
-              <option value="">All</option>
-              {accountTypeOptions.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
+        <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-5">
+          {scopeAccountType ? null : (
+            <label className="block">
+              <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                Account Type
+              </span>
+              <select
+                className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
+                value={accountTypeFilter}
+                onChange={(event) => setAccountTypeFilter(event.target.value)}
+              >
+                <option value="">All</option>
+                {accountTypeOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {optionLabel(option)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="block">
             <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
               Account Name
@@ -559,6 +589,44 @@ export function AnalyticsModule({
               ))}
             </select>
           </label>
+          {scopeAccountType === "prop-firm" ? (
+            <>
+              <label className="block">
+                <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Challenge Type
+                </span>
+                <select
+                  className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
+                  value={challengeTypeFilter}
+                  onChange={(event) => setChallengeTypeFilter(event.target.value)}
+                >
+                  <option value="">All</option>
+                  {challengeTypeOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  Phase
+                </span>
+                <select
+                  className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
+                  value={phaseFilter}
+                  onChange={(event) => setPhaseFilter(event.target.value)}
+                >
+                  <option value="">All</option>
+                  {phaseOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          ) : null}
         </div>
       </section>
 
