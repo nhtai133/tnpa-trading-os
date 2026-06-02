@@ -387,6 +387,9 @@ const sourceTradeHistory: TradeWithOptionalPlaybook[] = (
 export const tradeHistory: Trade[] = sourceTradeHistory.map((trade) => ({
   ...trade,
   source: trade.source ?? "mt5",
+  accountType: trade.accountType ?? importedMt5Report?.accountType ?? "Prop Firm",
+  accountName: trade.accountName ?? importedMt5Report?.accountName ?? importedMt5Report?.name ?? "FTMO Intraweek",
+  strategyType: trade.strategyType ?? importedMt5Report?.strategyType ?? "Intraweek",
   setupTag: trade.setupTag ?? getDefaultSetupTag(trade.setup),
   playbook:
     trade.playbook ??

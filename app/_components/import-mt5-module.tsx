@@ -8,7 +8,13 @@ import {
   writeStoredMt5Report,
 } from "@/app/_lib/mt5-local-storage";
 import { parseMt5ReportHtml } from "@/app/_lib/mt5-parser-core";
-import type { Mt5AccountReport } from "@/app/_lib/trading-types";
+import type { AccountType, Mt5AccountReport, StrategyType } from "@/app/_lib/trading-types";
+import {
+  accountTypes,
+  brokerAccountNames,
+  propFirmAccountNames,
+  strategyTypes,
+} from "@/app/_lib/trading-types";
 
 type ImportState = "idle" | "parsing" | "success" | "error";
 
@@ -37,6 +43,36 @@ function decodeFileBuffer(buffer: ArrayBuffer) {
   return new TextDecoder("utf-8").decode(buffer);
 }
 
+function accountNameOptions(accountType: AccountType) {
+  return accountType === "Prop Firm" ? [...propFirmAccountNames] : [...brokerAccountNames];
+}
+
+function assignAccountToReport({
+  accountName,
+  accountType,
+  report,
+  strategyType,
+}: {
+  accountName: string;
+  accountType: AccountType;
+  report: Mt5AccountReport;
+  strategyType: StrategyType;
+}): Mt5AccountReport {
+  return {
+    ...report,
+    accountType,
+    accountName,
+    strategyType,
+    trades: report.trades.map((trade) => ({
+      ...trade,
+      source: "mt5",
+      accountType,
+      accountName,
+      strategyType,
+    })),
+  };
+}
+
 export function ImportMt5Module({
   initialReport,
 }: {
@@ -53,6 +89,15 @@ export function ImportMt5Module({
   );
   const report = uploadedReport ?? storedReport ?? initialReport;
   const [selectedFileName, setSelectedFileName] = useState("");
+  const [accountType, setAccountType] = useState<AccountType>(
+    report?.accountType ?? "Prop Firm",
+  );
+  const [accountName, setAccountName] = useState(
+    report?.accountName ?? "FTMO Intraweek",
+  );
+  const [strategyType, setStrategyType] = useState<StrategyType>(
+    report?.strategyType ?? "Intraweek",
+  );
   const [status, setStatus] = useState<ImportState>(
     report ? "success" : "idle",
   );
@@ -93,7 +138,12 @@ export function ImportMt5Module({
         }
 
         const html = decodeFileBuffer(result);
-        const parsedReport = parseMt5ReportHtml(html, file.name);
+        const parsedReport = assignAccountToReport({
+          accountName,
+          accountType,
+          report: parseMt5ReportHtml(html, file.name),
+          strategyType,
+        });
         console.log(
           "[TNPA MT5 Import] parsed trade count",
           parsedReport.trades.length,
@@ -179,6 +229,62 @@ export function ImportMt5Module({
           </button>
         </div>
 
+        <div className="mt-5 grid gap-4 sm:grid-cols-3">
+          <label className="block">
+            <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+              Account Type
+            </span>
+            <select
+              className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
+              value={accountType}
+              onChange={(event) => {
+                const nextType = event.target.value as AccountType;
+                setAccountType(nextType);
+                setAccountName(nextType === "Prop Firm" ? "FTMO Intraweek" : "ICMarkets Swing");
+                setStrategyType(nextType === "Prop Firm" ? "Intraweek" : "Swing");
+              }}
+            >
+              {accountTypes.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+              Account Name
+            </span>
+            <select
+              className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
+              value={accountName}
+              onChange={(event) => setAccountName(event.target.value)}
+            >
+              {accountNameOptions(accountType).map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+              Strategy Type
+            </span>
+            <select
+              className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
+              value={strategyType}
+              onChange={(event) => setStrategyType(event.target.value as StrategyType)}
+            >
+              {strategyTypes.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
         <div className="mt-5 grid gap-3 sm:grid-cols-3">
           <div className="rounded-md border border-white/10 bg-white/[0.03] p-4">
             <div className="text-xs uppercase tracking-[0.16em] text-slate-500">
@@ -238,6 +344,9 @@ export function ImportMt5Module({
           <section className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {[
               ["Account Name", report.name],
+              ["Trading Account", report.accountName ?? accountName],
+              ["Account Type", report.accountType ?? accountType],
+              ["Strategy Type", report.strategyType ?? strategyType],
               ["Company", report.company],
               ["Generated", report.generatedAt],
               ["Total Trades", report.totalTrades.toLocaleString()],

@@ -1,9 +1,19 @@
 import { getDefaultPlaybook } from "@/app/_lib/playbook-storage";
 import { getDefaultSetupTag } from "@/app/_lib/setup-tag-storage";
-import type { Playbook, SetupTag, Trade, TradeJournal } from "@/app/_lib/trading-types";
+import type {
+  AccountType,
+  Playbook,
+  SetupTag,
+  StrategyType,
+  Trade,
+  TradeJournal,
+} from "@/app/_lib/trading-types";
 
 export type ManualTradeInput = TradeJournal & {
   status: "Open" | "Closed";
+  accountType: AccountType;
+  accountName: string;
+  strategyType: StrategyType;
   symbol: string;
   side: "Long" | "Short";
   openTime: string;
@@ -48,6 +58,9 @@ function sanitizeTrade(value: unknown): Trade | null {
   return {
     id: trade.id,
     source: "manual",
+    accountType: trade.accountType ?? "Broker",
+    accountName: trade.accountName ?? "ICMarkets Swing",
+    strategyType: trade.strategyType ?? "Swing",
     symbol: trade.symbol,
     setup: trade.setup ?? "Manual trade",
     setupTag: trade.setupTag ?? getDefaultSetupTag(trade.setup ?? "Manual trade"),
@@ -100,6 +113,9 @@ function toTrade(input: ManualTradeInput, tradeId: string): Trade {
   return {
     id: tradeId,
     source: "manual",
+    accountType: input.accountType,
+    accountName: input.accountName,
+    strategyType: input.strategyType,
     symbol: input.symbol.trim().toUpperCase(),
     setup: "Manual trade",
     setupTag: input.setupTag,

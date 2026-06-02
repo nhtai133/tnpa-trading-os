@@ -28,9 +28,11 @@ import {
 } from "@/app/_lib/trade-journal-storage";
 import { createTradingDataset } from "@/app/_lib/trading-metrics";
 import type {
+  AccountType,
   EquityPoint,
   MonthlyPerformance,
   Mt5AccountReport,
+  StrategyType,
   TradeSource,
   Trade,
 } from "@/app/_lib/trading-types";
@@ -39,6 +41,22 @@ const emptySetupTagOverrides: SetupTagOverrides = {};
 const emptyPlaybookOverrides: PlaybookOverrides = {};
 const emptyTradeJournalOverrides: TradeJournalOverrides = {};
 const emptyManualTrades: Trade[] = [];
+
+function defaultAccountType(source: TradeSource): AccountType {
+  return source === "manual" ? "Broker" : "Prop Firm";
+}
+
+function defaultAccountName(source: TradeSource, report: Mt5AccountReport | null) {
+  if (source === "manual") {
+    return "ICMarkets Swing";
+  }
+
+  return report?.accountName ?? report?.name ?? "FTMO Intraweek";
+}
+
+function defaultStrategyType(source: TradeSource): StrategyType {
+  return source === "manual" ? "Swing" : "Intraweek";
+}
 
 export function useTradingDataset({
   fallbackEquityCurve,
@@ -82,6 +100,9 @@ export function useTradingDataset({
     const mt5Trades = (report?.trades ?? initialTrades).map((trade) => ({
       ...trade,
       source: (trade.source ?? "mt5") as TradeSource,
+      accountType: trade.accountType ?? report?.accountType,
+      accountName: trade.accountName ?? report?.accountName,
+      strategyType: trade.strategyType ?? report?.strategyType,
     }));
     const manualTradesWithSource = manualTrades.map((trade) => ({
       ...trade,
@@ -93,6 +114,8 @@ export function useTradingDataset({
         trade.setupTag ??
         getDefaultSetupTag(trade.setup);
 
+      const source = trade.source ?? "mt5";
+
       return {
         ...trade,
         ...tradeJournalOverrides[trade.id],
@@ -102,7 +125,10 @@ export function useTradingDataset({
           getDefaultPlaybook(trade.setup, setupTag),
         setupTag,
         status: trade.status ?? "Closed",
-        source: trade.source ?? "mt5",
+        source,
+        accountType: trade.accountType ?? defaultAccountType(source),
+        accountName: trade.accountName ?? defaultAccountName(source, report),
+        strategyType: trade.strategyType ?? defaultStrategyType(source),
       };
     });
 

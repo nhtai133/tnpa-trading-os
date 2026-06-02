@@ -123,6 +123,13 @@ function maxConsecutive(trades: Trade[], result: Trade["result"]) {
   return best;
 }
 
+function uniqueValues(
+  trades: Trade[],
+  key: keyof Pick<Trade, "accountType" | "accountName" | "strategyType">,
+) {
+  return Array.from(new Set(trades.map((trade) => trade[key]).filter(Boolean))).sort() as string[];
+}
+
 function MetricCard({
   label,
   sublabel,
@@ -416,18 +423,31 @@ export function AnalyticsModule({
   initialTrades: Trade[];
 }) {
   const [sourceFilter, setSourceFilter] = useState<"all" | "mt5" | "manual">("all");
+  const [accountTypeFilter, setAccountTypeFilter] = useState("");
+  const [accountNameFilter, setAccountNameFilter] = useState("");
+  const [strategyTypeFilter, setStrategyTypeFilter] = useState("");
   const { tradeHistory } = useTradingDataset({
     fallbackEquityCurve,
     fallbackMonthlyPerformance,
     initialReport,
     initialTrades,
   });
+  const accountTypeOptions = uniqueValues(tradeHistory, "accountType");
+  const accountNameOptions = uniqueValues(tradeHistory, "accountName");
+  const strategyTypeOptions = uniqueValues(tradeHistory, "strategyType");
   const analyticsTrades = tradeHistory.filter((trade) => {
     const source = String(trade.source ?? "mt5");
     if (sourceFilter === "mt5") return source === "mt5";
     if (sourceFilter === "manual") return source === "manual";
     return true;
-  }).filter((trade) => trade.status !== "Open");
+  }).filter((trade) => {
+    return (
+      (!accountTypeFilter || trade.accountType === accountTypeFilter) &&
+      (!accountNameFilter || trade.accountName === accountNameFilter) &&
+      (!strategyTypeFilter || trade.strategyType === strategyTypeFilter) &&
+      trade.status !== "Open"
+    );
+  });
   const bySymbol = groupMetrics(analyticsTrades, "symbol");
   const bySetup = groupMetrics(analyticsTrades, "setupTag");
   const byPlaybook = groupMetrics(analyticsTrades, "playbook");
@@ -486,6 +506,62 @@ export function AnalyticsModule({
         </div>
       }
     >
+      <section className="mb-6 rounded-md border border-white/10 bg-[#0d121c] p-5 shadow-2xl shadow-black/20">
+        <div className="grid gap-4 md:grid-cols-3">
+          <label className="block">
+            <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+              Account Type
+            </span>
+            <select
+              className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
+              value={accountTypeFilter}
+              onChange={(event) => setAccountTypeFilter(event.target.value)}
+            >
+              <option value="">All</option>
+              {accountTypeOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+              Account Name
+            </span>
+            <select
+              className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
+              value={accountNameFilter}
+              onChange={(event) => setAccountNameFilter(event.target.value)}
+            >
+              <option value="">All</option>
+              {accountNameOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+              Strategy Type
+            </span>
+            <select
+              className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
+              value={strategyTypeFilter}
+              onChange={(event) => setStrategyTypeFilter(event.target.value)}
+            >
+              <option value="">All</option>
+              {strategyTypeOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </section>
+
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           label="Best Trade"

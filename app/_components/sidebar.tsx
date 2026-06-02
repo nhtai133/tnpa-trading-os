@@ -11,6 +11,8 @@ type NavItem = {
 
 const tradingItems: NavItem[] = [
   { href: "/trading", label: "Trading Dashboard", marker: "TD" },
+  { href: "/prop-firm", label: "Prop Firm", marker: "PF" },
+  { href: "/broker-trading", label: "Broker Trading", marker: "BT" },
   { href: "/trades", label: "Trades", marker: "TR" },
   { href: "/analytics", label: "Analytics", marker: "AN" },
   { href: "/risk", label: "Risk Monitor", marker: "RM" },

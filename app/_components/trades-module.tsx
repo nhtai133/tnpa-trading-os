@@ -12,25 +12,34 @@ import { writeSetupTagOverride } from "@/app/_lib/setup-tag-storage";
 import { writeTradeJournalOverride } from "@/app/_lib/trade-journal-storage";
 import { useTradingDataset } from "@/app/_lib/use-trading-dataset";
 import type {
+  AccountType,
   EquityPoint,
   MonthlyPerformance,
   Mt5AccountReport,
   Playbook,
   SetupTag,
+  StrategyType,
   TradeJournal,
   Trade,
 } from "@/app/_lib/trading-types";
 import {
+  accountTypes,
+  brokerAccountNames,
   emotionOptions,
   mistakeOptions,
   playbooks,
+  propFirmAccountNames,
   setupTags,
+  strategyTypes,
 } from "@/app/_lib/trading-types";
 
 const pageSize = 8;
 
 const initialManualTrade: ManualTradeInput = {
   status: "Closed",
+  accountType: "Broker",
+  accountName: "ICMarkets Swing",
+  strategyType: "Swing",
   symbol: "",
   side: "Long",
   openTime: "",
@@ -50,6 +59,9 @@ const initialManualTrade: ManualTradeInput = {
 function manualTradeInputFromTrade(trade: Trade): ManualTradeInput {
   return {
     status: trade.status,
+    accountType: trade.accountType ?? "Broker",
+    accountName: trade.accountName ?? "ICMarkets Swing",
+    strategyType: trade.strategyType ?? "Swing",
     symbol: trade.symbol,
     side: trade.side,
     entryScreenshot: trade.entryScreenshot,
@@ -72,6 +84,9 @@ function manualTradeInputFromTrade(trade: Trade): ManualTradeInput {
 }
 
 type FilterState = {
+  accountType: string;
+  accountName: string;
+  strategyType: string;
   symbol: string;
   setupTag: string;
   playbook: string;
@@ -83,9 +98,21 @@ type TradeTab = "all" | "mt5" | "manual" | "open";
 
 function uniqueValues(
   trades: Trade[],
-  key: keyof Pick<Trade, "symbol" | "setupTag" | "playbook">,
+  key: keyof Pick<Trade, "symbol" | "setupTag" | "playbook" | "accountName" | "strategyType" | "accountType">,
 ) {
-  return Array.from(new Set(trades.map((trade) => trade[key]))).sort();
+  return Array.from(new Set(trades.map((trade) => trade[key]).filter(Boolean))).sort() as string[];
+}
+
+function accountNameOptions(accountType: string) {
+  if (accountType === "Prop Firm") {
+    return [...propFirmAccountNames];
+  }
+
+  if (accountType === "Broker") {
+    return [...brokerAccountNames];
+  }
+
+  return [...propFirmAccountNames, ...brokerAccountNames];
 }
 
 function money(value: number) {
@@ -276,6 +303,11 @@ function TradeReviewDrawer({
         return;
       }
 
+      if (!manualDraft.accountType || !manualDraft.accountName || !manualDraft.strategyType) {
+        setError("Account Type, Account Name, and Strategy Type are required.");
+        return;
+      }
+
       if (manualDraft.status === "Closed" && !manualDraft.closeTime) {
         setError("Close Time is required for closed trades.");
         return;
@@ -370,6 +402,33 @@ function TradeReviewDrawer({
               label="Symbol"
               value={manualDraft.symbol}
               onChange={(value) => updateManualDraft("symbol", value)}
+            />
+            <SelectFilter
+              label="Account Type"
+              options={[...accountTypes]}
+              value={manualDraft.accountType}
+              onChange={(value) => {
+                updateManualDraft("accountType", value as AccountType);
+                updateManualDraft(
+                  "accountName",
+                  value === "Prop Firm" ? "FTMO Intraweek" : "ICMarkets Swing",
+                );
+              }}
+              includeAll={false}
+            />
+            <SelectFilter
+              label="Account Name"
+              options={accountNameOptions(manualDraft.accountType)}
+              value={manualDraft.accountName}
+              onChange={(value) => updateManualDraft("accountName", value)}
+              includeAll={false}
+            />
+            <SelectFilter
+              label="Strategy Type"
+              options={[...strategyTypes]}
+              value={manualDraft.strategyType}
+              onChange={(value) => updateManualDraft("strategyType", value as StrategyType)}
+              includeAll={false}
             />
             <SelectFilter
               label="Trade Status"
@@ -555,6 +614,11 @@ function CreateTradeDrawer({ onClose }: { onClose: () => void }) {
       return;
     }
 
+    if (!draft.accountType || !draft.accountName || !draft.strategyType) {
+      setError("Account Type, Account Name, and Strategy Type are required.");
+      return;
+    }
+
     if (draft.status === "Closed" && !draft.closeTime) {
       setError("Close Time is required for closed trades.");
       return;
@@ -624,6 +688,33 @@ function CreateTradeDrawer({ onClose }: { onClose: () => void }) {
             label="Symbol"
             value={draft.symbol}
             onChange={(value) => updateDraft("symbol", value)}
+          />
+          <SelectFilter
+            label="Account Type"
+            options={[...accountTypes]}
+            value={draft.accountType}
+            onChange={(value) => {
+              updateDraft("accountType", value as AccountType);
+              updateDraft(
+                "accountName",
+                value === "Prop Firm" ? "FTMO Intraweek" : "ICMarkets Swing",
+              );
+            }}
+            includeAll={false}
+          />
+          <SelectFilter
+            label="Account Name"
+            options={accountNameOptions(draft.accountType)}
+            value={draft.accountName}
+            onChange={(value) => updateDraft("accountName", value)}
+            includeAll={false}
+          />
+          <SelectFilter
+            label="Strategy Type"
+            options={[...strategyTypes]}
+            value={draft.strategyType}
+            onChange={(value) => updateDraft("strategyType", value as StrategyType)}
+            includeAll={false}
           />
           <SelectFilter
             label="Trade Status"
@@ -765,6 +856,9 @@ export function TradesModule({
   const [query, setQuery] = useState("");
   const [activeTab, setActiveTab] = useState<TradeTab>("all");
   const [filters, setFilters] = useState<FilterState>({
+    accountType: "",
+    accountName: "",
+    strategyType: "",
     symbol: "",
     setupTag: "",
     playbook: "",
@@ -776,6 +870,9 @@ export function TradesModule({
   const [creatingTrade, setCreatingTrade] = useState(false);
 
   const symbols = useMemo(() => uniqueValues(tradeHistory, "symbol"), [tradeHistory]);
+  const accountTypeOptions = useMemo(() => uniqueValues(tradeHistory, "accountType"), [tradeHistory]);
+  const accountNameFilterOptions = useMemo(() => uniqueValues(tradeHistory, "accountName"), [tradeHistory]);
+  const strategyTypeOptions = useMemo(() => uniqueValues(tradeHistory, "strategyType"), [tradeHistory]);
   const setupTagOptions = useMemo(() => uniqueValues(tradeHistory, "setupTag"), [tradeHistory]);
   const playbookOptions = useMemo(() => uniqueValues(tradeHistory, "playbook"), [tradeHistory]);
 
@@ -810,6 +907,9 @@ export function TradesModule({
           trade.setup,
           trade.setupTag,
           trade.playbook,
+          trade.accountType,
+          trade.accountName,
+          trade.strategyType,
           trade.session,
         ]
           .join(" ")
@@ -818,6 +918,9 @@ export function TradesModule({
 
       return (
         matchesQuery &&
+        (!filters.accountType || trade.accountType === filters.accountType) &&
+        (!filters.accountName || trade.accountName === filters.accountName) &&
+        (!filters.strategyType || trade.strategyType === filters.strategyType) &&
         (!filters.symbol || trade.symbol === filters.symbol) &&
         (!filters.setupTag || trade.setupTag === filters.setupTag) &&
         (!filters.playbook || trade.playbook === filters.playbook) &&
@@ -878,7 +981,7 @@ export function TradesModule({
             </button>
           ))}
         </div>
-        <div className="grid gap-4 xl:grid-cols-[1.25fr_repeat(5,minmax(0,1fr))]">
+        <div className="grid gap-4 xl:grid-cols-[1.25fr_repeat(8,minmax(0,1fr))]">
           <label className="block">
             <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
               Search
@@ -893,6 +996,24 @@ export function TradesModule({
               }}
             />
           </label>
+          <SelectFilter
+            label="Account Type"
+            options={accountTypeOptions}
+            value={filters.accountType}
+            onChange={(value) => updateFilter("accountType", value)}
+          />
+          <SelectFilter
+            label="Account Name"
+            options={accountNameFilterOptions}
+            value={filters.accountName}
+            onChange={(value) => updateFilter("accountName", value)}
+          />
+          <SelectFilter
+            label="Strategy Type"
+            options={strategyTypeOptions}
+            value={filters.strategyType}
+            onChange={(value) => updateFilter("strategyType", value)}
+          />
           <SelectFilter
             label="Symbol"
             options={symbols}
@@ -941,6 +1062,9 @@ export function TradesModule({
             onClick={() => {
               setQuery("");
               setFilters({
+                accountType: "",
+                accountName: "",
+                strategyType: "",
                 symbol: "",
                 setupTag: "",
                 playbook: "",
@@ -960,6 +1084,8 @@ export function TradesModule({
                 <tr>
                   <th className="px-5 py-4 font-semibold">Trade</th>
                   <th className="px-5 py-4 font-semibold">Source</th>
+                  <th className="px-5 py-4 font-semibold">Account</th>
+                  <th className="px-5 py-4 font-semibold">Strategy</th>
                   <th className="px-5 py-4 font-semibold">Symbol</th>
                   <th className="px-5 py-4 font-semibold">Setup Tag</th>
                   <th className="px-5 py-4 font-semibold">Playbook</th>
@@ -1004,6 +1130,15 @@ export function TradesModule({
                         {String(trade.source ?? "mt5") === "manual" ? "Manual" : "MT5"}
                       </span>
                     </td>
+                    <td className="px-5 py-4">
+                      <div className="font-semibold text-slate-100">
+                        {trade.accountName ?? "Unassigned"}
+                      </div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        {trade.accountType ?? "Broker"}
+                      </div>
+                    </td>
+                    <td className="px-5 py-4">{trade.strategyType ?? "Swing"}</td>
                     <td className="px-5 py-4 font-semibold text-white">
                       {trade.symbol}
                     </td>

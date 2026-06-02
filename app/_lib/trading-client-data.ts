@@ -10,6 +10,9 @@ export const fallbackTradeHistory: Trade[] = [
   {
     id: "TNPA-C1",
     source: "mt5",
+    accountType: "Prop Firm",
+    accountName: "FTMO Intraweek",
+    strategyType: "Intraweek",
     symbol: "XAUUSD",
     setup: "London liquidity sweep",
     setupTag: "Breakout Trendline",
@@ -27,6 +30,9 @@ export const fallbackTradeHistory: Trade[] = [
   {
     id: "TNPA-C2",
     source: "mt5",
+    accountType: "Prop Firm",
+    accountName: "FTMO Intraweek",
+    strategyType: "Intraweek",
     symbol: "EURUSD",
     setup: "NY continuation",
     setupTag: "Trading Range",
@@ -44,6 +50,9 @@ export const fallbackTradeHistory: Trade[] = [
   {
     id: "TNPA-C3",
     source: "mt5",
+    accountType: "Prop Firm",
+    accountName: "FTMO Intraweek",
+    strategyType: "Intraweek",
     symbol: "NAS100",
     setup: "Opening range failure",
     setupTag: "Trading Range",
@@ -61,6 +70,9 @@ export const fallbackTradeHistory: Trade[] = [
   {
     id: "TNPA-C4",
     source: "mt5",
+    accountType: "Prop Firm",
+    accountName: "FTMO Intraweek",
+    strategyType: "Intraweek",
     symbol: "GBPJPY",
     setup: "HTF order block",
     setupTag: "Supply Demand",
@@ -78,6 +90,9 @@ export const fallbackTradeHistory: Trade[] = [
   {
     id: "TNPA-C5",
     source: "mt5",
+    accountType: "Prop Firm",
+    accountName: "FTMO Intraweek",
+    strategyType: "Intraweek",
     symbol: "US30",
     setup: "Rejection at value high",
     setupTag: "Rectangle Range",

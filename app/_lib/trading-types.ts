@@ -17,6 +17,40 @@ export type MonthlyPerformance = {
 
 export type TradeSource = "mt5" | "manual";
 
+export const accountTypes = ["Prop Firm", "Broker"] as const;
+export type AccountType = (typeof accountTypes)[number];
+
+export const strategyTypes = [
+  "Intraweek",
+  "Swing",
+  "Position",
+  "Scalp",
+  "Crypto Spot",
+  "Other",
+] as const;
+export type StrategyType = (typeof strategyTypes)[number];
+
+export const propFirmAccountNames = [
+  "FTMO Intraweek",
+  "FTMO Challenge V1",
+  "FTMO Challenge V2",
+  "Other Prop Firms",
+] as const;
+
+export const brokerAccountNames = [
+  "Exness Swing",
+  "ICMarkets Swing",
+  "XM Swing",
+  "HFM Swing",
+  "Other Brokers",
+] as const;
+
+export type TradingAccount = {
+  accountType: AccountType;
+  accountName: string;
+  strategyType: StrategyType;
+};
+
 export const setupTags = [
   "Breakout Trendline",
   "Rectangle Range",
@@ -81,6 +115,9 @@ export type TradeJournal = {
 export type Trade = {
   id: string;
   source?: TradeSource;
+  accountType?: AccountType;
+  accountName?: string;
+  strategyType?: StrategyType;
   symbol: string;
   setup: string;
   setupTag: SetupTag;
@@ -104,6 +141,9 @@ export type Trade = {
 
 export type Mt5AccountReport = {
   sourceFile: string;
+  accountType?: AccountType;
+  accountName?: string;
+  strategyType?: StrategyType;
   name: string;
   account: string;
   company: string;
