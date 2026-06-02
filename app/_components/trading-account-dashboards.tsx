@@ -3,9 +3,13 @@
 import { useMemo, useState, useSyncExternalStore } from "react";
 import { AppShell } from "@/app/_components/app-shell";
 import {
+  emptyFtmoPayouts,
   emptyPropAccounts,
+  readStoredFtmoPayouts,
   readStoredPropAccounts,
+  subscribeToFtmoPayouts,
   subscribeToPropAccounts,
+  type PropAccount,
 } from "@/app/_lib/prop-account-storage";
 import { buildRiskMetrics } from "@/app/_lib/risk-metrics";
 import { useRiskSettings } from "@/app/_lib/use-risk-settings";
@@ -83,6 +87,140 @@ function nextPropAction({
   if (profitTargetProgress >= 100) return "Ready For Funded";
   if (profitTargetProgress >= 90) return "Close To Passing";
   return "Keep Trading";
+}
+
+function closedNetProfit(trades: Trade[]) {
+  return trades
+    .filter((trade) => trade.status !== "Open")
+    .reduce((sum, trade) => sum + trade.pnl, 0);
+}
+
+function openPositionCount(trades: Trade[]) {
+  return trades.filter((trade) => trade.status === "Open").length;
+}
+
+function statusBadgeTone(status: string) {
+  if (status === "Danger" || status === "At Risk" || status === "Stop Trading Today" || status === "Rule Danger") {
+    return "border-rose-300/30 bg-rose-400/10 text-rose-200";
+  }
+
+  if (status === "Warning") {
+    return "border-amber-300/30 bg-amber-400/10 text-amber-200";
+  }
+
+  if (status === "Near Pass") {
+    return "border-cyan-300/30 bg-cyan-400/10 text-cyan-200";
+  }
+
+  if (status === "Funded" || status === "Payout Ready") {
+    return "border-emerald-300/30 bg-emerald-400/10 text-emerald-200";
+  }
+
+  return "border-sky-300/30 bg-sky-400/10 text-sky-200";
+}
+
+function StatusBadge({ value }: { value: string }) {
+  return (
+    <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${statusBadgeTone(value)}`}>
+      {value}
+    </span>
+  );
+}
+
+function registryAccountFromTrade(accountName: string, trades: Trade[]): PropAccount {
+  const trade = trades.find((row) => row.accountName === accountName);
+
+  return {
+    id: `trade-derived-${accountName}`,
+    firmName: "FTMO",
+    accountName,
+    accountSize: trade?.accountSize ?? 100000,
+    challengeType: trade?.challengeType ?? "FTMO Challenge V2",
+    phase: trade?.phase ?? "Phase 1",
+    status: trade?.propStatus ?? "Active",
+    startDate: trade?.startDate ?? "",
+    minimumTradingDays: trade?.minimumTradingDays ?? 4,
+    profitTargetPercent: trade?.profitTargetPercent ?? 10,
+    dailyLossLimitPercent: trade?.dailyLossLimitPercent ?? 5,
+    maxLossLimitPercent: trade?.maxLossLimitPercent ?? 10,
+  };
+}
+
+function buildFtmoAccountMetrics({
+  account,
+  accountReport,
+  payouts,
+  settings,
+  trades,
+}: {
+  account: PropAccount;
+  accountReport: ReturnType<typeof useTradingDataset>["accountReport"];
+  payouts: Array<{ accountName: string; amount: number }>;
+  settings: ReturnType<typeof useRiskSettings>;
+  trades: Trade[];
+}) {
+  const accountTrades = trades.filter((trade) => trade.accountName === account.accountName);
+  const risk = buildRiskMetrics({ report: accountReport, settings, trades: accountTrades });
+  const accountProfit = closedNetProfit(accountTrades);
+  const targetAmount = account.accountSize * (account.profitTargetPercent / 100);
+  const targetProgress = targetAmount === 0 ? 0 : (accountProfit / targetAmount) * 100;
+  const targetRemaining = Math.max(0, targetAmount - accountProfit);
+  const dailyLossRemaining = Math.max(
+    0,
+    account.accountSize * (account.dailyLossLimitPercent / 100) - Math.max(0, -risk.dailyPnl),
+  );
+  const maxLossRemaining = Math.max(
+    0,
+    account.accountSize * (account.maxLossLimitPercent / 100) - Math.max(0, risk.currentDrawdown),
+  );
+  const days = countTradingDays(accountTrades);
+  const tradingDaysProgress = account.minimumTradingDays === 0 ? 100 : (days / Math.max(1, account.minimumTradingDays)) * 100;
+  const canTradeToday = risk.dailyLossUsage >= 100 || risk.riskLevel === "Breach" ? "Stop" : risk.dailyLossUsage >= 70 ? "Warning" : "Yes";
+  const lifetimePayout = payouts
+    .filter((payout) => payout.accountName === account.accountName)
+    .reduce((sum, payout) => sum + payout.amount, 0);
+  const estimatedNextPayout = Math.max(0, accountProfit - lifetimePayout) * 0.8;
+  const payoutReady =
+    account.phase === "Funded" &&
+    estimatedNextPayout > 0 &&
+    openPositionCount(accountTrades) === 0 &&
+    risk.riskLevel !== "Breach";
+  const nextAction = nextPropAction({
+    canTradeToday,
+    phase: account.phase,
+    profitTargetProgress: targetProgress,
+    riskLevel: risk.riskLevel,
+  });
+  const visualStatus = payoutReady
+    ? "Payout Ready"
+    : account.phase === "Funded"
+      ? "Funded"
+      : targetProgress >= 90
+        ? "Near Pass"
+        : risk.riskLevel === "Danger" || risk.riskLevel === "Breach"
+          ? "Danger"
+          : risk.dailyLossUsage >= 70 || risk.maxLossUsage >= 70
+            ? "Warning"
+            : "Safe";
+
+  return {
+    account,
+    accountProfit,
+    canTradeToday,
+    dailyLossRemaining,
+    estimatedNextPayout,
+    lifetimePayout,
+    maxLossRemaining,
+    nextAction,
+    openPositions: openPositionCount(accountTrades),
+    payoutReady,
+    risk,
+    targetProgress,
+    targetRemaining,
+    tradingDays: days,
+    tradingDaysProgress,
+    visualStatus,
+  };
 }
 
 function MetricCard({
@@ -195,12 +333,20 @@ export function PropTradingDashboard() {
     readStoredPropAccounts,
     () => emptyPropAccounts,
   );
+  const ftmoPayouts = useSyncExternalStore(
+    subscribeToFtmoPayouts,
+    readStoredFtmoPayouts,
+    () => emptyFtmoPayouts,
+  );
   const registryNames = propAccounts.map((account) => account.accountName);
-  const accountNames = registryNames.length
-    ? registryNames
-    : uniqueAccountNames(tradeHistory, "prop-firm");
+  const tradeAccountNames = uniqueAccountNames(tradeHistory, "prop-firm");
+  const accountNames = registryNames.length ? registryNames : tradeAccountNames;
   const [accountName, setAccountName] = useState("");
-  const selectedAccountName = accountName || accountNames[0] || "";
+  const selectedAccountName = accountName;
+  const allPropTrades = tradeHistory.filter((trade) => (trade.accountType ?? "prop-firm") === "prop-firm");
+  const ftmoAccounts = propAccounts.length
+    ? propAccounts
+    : tradeAccountNames.map((name) => registryAccountFromTrade(name, allPropTrades));
   const selectedRegistryAccount =
     propAccounts.find((account) => account.accountName === selectedAccountName) ?? null;
   const trades = useMemo(
@@ -212,6 +358,32 @@ export function PropTradingDashboard() {
       ),
     [selectedAccountName, tradeHistory],
   );
+  const accountMetrics = ftmoAccounts.map((account) =>
+    buildFtmoAccountMetrics({
+      account,
+      accountReport,
+      payouts: ftmoPayouts,
+      settings,
+      trades: allPropTrades,
+    }),
+  );
+  const isAllAccounts = !selectedAccountName;
+  const totalChallengeCapital = ftmoAccounts
+    .filter((account) => account.phase !== "Funded")
+    .reduce((sum, account) => sum + account.accountSize, 0);
+  const totalFundedCapital = ftmoAccounts
+    .filter((account) => account.phase === "Funded")
+    .reduce((sum, account) => sum + account.accountSize, 0);
+  const activeChallenges = ftmoAccounts.filter(
+    (account) => account.status === "Active" && account.phase !== "Funded",
+  ).length;
+  const fundedAccounts = ftmoAccounts.filter((account) => account.phase === "Funded" || account.status === "Funded").length;
+  const accountsNearPass = accountMetrics.filter((row) => row.visualStatus === "Near Pass").length;
+  const accountsAtRisk = accountMetrics.filter((row) => row.visualStatus === "Warning" || row.visualStatus === "Danger").length;
+  const totalProfitTargetRemaining = accountMetrics
+    .filter((row) => row.account.phase !== "Funded")
+    .reduce((sum, row) => sum + row.targetRemaining, 0);
+  const totalLifetimePayout = accountMetrics.reduce((sum, row) => sum + row.lifetimePayout, 0);
   const selected = trades[0];
   const risk = buildRiskMetrics({ report: accountReport, settings, trades });
   const accountSize = selectedRegistryAccount?.accountSize ?? selected?.accountSize ?? accountReport?.accountSize ?? risk.accountBalance;
@@ -240,6 +412,109 @@ export function PropTradingDashboard() {
       title="FTMO Dashboard"
       action={<AccountSelector accountName={selectedAccountName} accountNames={accountNames} onChange={setAccountName} />}
     >
+      {isAllAccounts ? (
+        <>
+          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <MetricCard label="Total Challenge Capital" value={plainMoney(totalChallengeCapital)} />
+            <MetricCard label="Total Funded Capital" value={plainMoney(totalFundedCapital)} />
+            <MetricCard label="Active Challenges" value={`${activeChallenges}`} />
+            <MetricCard label="Funded Accounts" value={`${fundedAccounts}`} />
+            <MetricCard label="Accounts Near Pass" value={`${accountsNearPass}`} tone={accountsNearPass ? "text-cyan-300" : "text-white"} />
+            <MetricCard label="Accounts At Risk" value={`${accountsAtRisk}`} tone={accountsAtRisk ? "text-amber-300" : "text-white"} />
+            <MetricCard label="Total Profit Target Remaining" value={plainMoney(totalProfitTargetRemaining)} />
+            <MetricCard label="Total Lifetime Payout" value={plainMoney(totalLifetimePayout)} />
+          </section>
+
+          <section className="mt-6 rounded-md border border-white/10 bg-[#0d121c] shadow-2xl shadow-black/20">
+            <div className="border-b border-white/10 p-5">
+              <h2 className="text-base font-semibold text-white">FTMO Account Overview</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Portfolio-level view across every FTMO account in the registry.
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[1320px] text-left text-sm">
+                <thead className="bg-white/[0.03] text-xs uppercase tracking-[0.14em] text-slate-500">
+                  <tr>
+                    <th className="px-5 py-4 font-semibold">Account Name</th>
+                    <th className="px-5 py-4 font-semibold">Account Size</th>
+                    <th className="px-5 py-4 font-semibold">Type</th>
+                    <th className="px-5 py-4 font-semibold">Phase</th>
+                    <th className="px-5 py-4 font-semibold">Status</th>
+                    <th className="px-5 py-4 font-semibold">Profit Target Progress</th>
+                    <th className="px-5 py-4 font-semibold">Daily Loss Remaining</th>
+                    <th className="px-5 py-4 font-semibold">Max Loss Remaining</th>
+                    <th className="px-5 py-4 font-semibold">Trading Days Progress</th>
+                    <th className="px-5 py-4 font-semibold">Next Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/10">
+                  {accountMetrics.map((row) => (
+                    <tr className="text-slate-300" key={row.account.id}>
+                      <td className="px-5 py-4">
+                        <div className="font-semibold text-white">{row.account.accountName}</div>
+                        <div className="mt-1">
+                          <StatusBadge value={row.visualStatus} />
+                        </div>
+                      </td>
+                      <td className="px-5 py-4 font-semibold text-slate-100">{plainMoney(row.account.accountSize)}</td>
+                      <td className="px-5 py-4">{row.account.challengeType}</td>
+                      <td className="px-5 py-4">{row.account.phase}</td>
+                      <td className="px-5 py-4">
+                        <StatusBadge value={row.account.status} />
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="min-w-40">
+                          <div className="mb-2 flex justify-between gap-3">
+                            <span>{percent(row.targetProgress)}</span>
+                            {row.account.phase === "Funded" ? (
+                              <span className="text-emerald-300">{money(row.accountProfit)}</span>
+                            ) : (
+                              <span className="text-slate-500">{plainMoney(row.targetRemaining)} left</span>
+                            )}
+                          </div>
+                          <div className="h-2 rounded-full bg-white/[0.06]">
+                            <div
+                              className={`h-2 rounded-full ${row.targetProgress >= 90 ? "bg-cyan-300" : "bg-emerald-400"}`}
+                              style={{ width: `${Math.min(100, Math.max(0, row.targetProgress))}%` }}
+                            />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4">{plainMoney(row.dailyLossRemaining)}</td>
+                      <td className="px-5 py-4">{plainMoney(row.maxLossRemaining)}</td>
+                      <td className="px-5 py-4">
+                        {row.account.phase === "Funded" ? (
+                          <div>
+                            <div className="font-semibold text-emerald-300">{plainMoney(row.estimatedNextPayout)}</div>
+                            <div className="mt-1 text-xs text-slate-500">Est. next payout</div>
+                          </div>
+                        ) : (
+                          <div>
+                            <div>{percent(row.tradingDaysProgress)}</div>
+                            <div className="mt-1 text-xs text-slate-500">
+                              {row.tradingDays}/{row.account.minimumTradingDays} days
+                            </div>
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-5 py-4">
+                        <StatusBadge value={row.payoutReady ? "Payout Ready" : row.nextAction} />
+                        {row.account.phase === "Funded" ? (
+                          <div className="mt-2 text-xs text-slate-500">
+                            Lifetime payout {plainMoney(row.lifetimePayout)}
+                          </div>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
+      ) : (
+        <>
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Account Size" value={plainMoney(accountSize)} />
         <BadgeCard label="Firm" value={selectedRegistryAccount?.firmName ?? selected?.firmName ?? "FTMO"} />
@@ -260,6 +535,8 @@ export function PropTradingDashboard() {
         <ProgressCard label="Trading Days Progress" value={(tradingDays / Math.max(1, minimumTradingDays)) * 100} />
         <MetricCard label="Discipline Score" value={`${risk.disciplineScore}/100`} />
       </section>
+        </>
+      )}
     </AppShell>
   );
 }
