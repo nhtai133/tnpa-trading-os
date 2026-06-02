@@ -46,6 +46,29 @@ export type ArchiveReason = (typeof archiveReasons)[number];
 
 export type WealthStatus = "Active" | "Archived";
 
+export const brokerInstitutions = [
+  "VCBS",
+  "ACBS",
+  "TCBS",
+  "SSI",
+  "VPS",
+  "MBS",
+  "VNDIRECT",
+  "Other",
+] as const;
+
+export type BrokerInstitution = (typeof brokerInstitutions)[number];
+
+export const portfolioTypes = [
+  "Long-Term Stock Portfolio",
+  "Stock Swing Portfolio",
+  "Retirement Stock Portfolio 5%",
+  "3-5Y Stocks + Bitcoin + Real Estate Portfolio",
+  "Other",
+] as const;
+
+export type PortfolioType = (typeof portfolioTypes)[number];
+
 export type WealthAccount = {
   id: string;
   name: string;
@@ -71,5 +94,21 @@ export type WealthAsset = {
   archivedAt?: string;
   costBasis?: number;
   accountId?: string;
+  notes?: string;
+};
+
+export type WealthBrokerAccount = {
+  id: string;
+  broker: BrokerInstitution;
+  name: string;
+  currency: Currency;
+  cashBalance: number;
+  stockMarketValue: number;
+  fundEtfValue: number;
+  totalEquity: number;
+  portfolioType: PortfolioType;
+  status: WealthStatus;
+  archiveReason?: ArchiveReason;
+  archivedAt?: string;
   notes?: string;
 };

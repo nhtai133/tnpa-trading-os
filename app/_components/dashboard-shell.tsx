@@ -7,13 +7,23 @@ import { KpiCard } from "@/app/_components/kpi-card";
 import { MonthlyPerformanceChart } from "@/app/_components/monthly-performance-chart";
 import { RecentTradesTable } from "@/app/_components/recent-trades-table";
 import {
+  readStoredBrokerAccounts,
+  subscribeToBrokerAccounts,
+} from "@/app/_lib/broker-account-storage";
+import {
   readStoredBankAccounts,
   subscribeToBankAccounts,
 } from "@/app/_lib/bank-account-storage";
 import { buildRiskMetrics } from "@/app/_lib/risk-metrics";
 import { useRiskSettings } from "@/app/_lib/use-risk-settings";
 import { useTradingDataset } from "@/app/_lib/use-trading-dataset";
+import { buildWealthSummaryWithAccounts } from "@/app/_lib/wealth-metrics";
 import type { WealthAccount } from "@/app/_lib/wealth-types";
+import {
+  readStoredWealthAssets,
+  subscribeToWealthAssets,
+} from "@/app/_lib/wealth-storage";
+import type { WealthAsset, WealthBrokerAccount } from "@/app/_lib/wealth-types";
 import type {
   EquityPoint,
   MonthlyPerformance,
@@ -22,6 +32,8 @@ import type {
 } from "@/app/_lib/trading-types";
 
 const emptyBankAccounts: WealthAccount[] = [];
+const emptyBrokerAccounts: WealthBrokerAccount[] = [];
+const emptyAssets: WealthAsset[] = [];
 
 function formatMoney(value: number) {
   const sign = value >= 0 ? "" : "-";
@@ -193,8 +205,26 @@ export function DashboardShell({
     readStoredBankAccounts,
     () => emptyBankAccounts,
   );
+  const brokerAccounts = useSyncExternalStore(
+    subscribeToBrokerAccounts,
+    readStoredBrokerAccounts,
+    () => emptyBrokerAccounts,
+  );
+  const assets = useSyncExternalStore(
+    subscribeToWealthAssets,
+    readStoredWealthAssets,
+    () => emptyAssets,
+  );
   const activeBankAccounts = bankAccounts.filter(
     (account) => account.status !== "Archived",
+  );
+  const activeBrokerAccounts = brokerAccounts.filter(
+    (account) => account.status !== "Archived",
+  );
+  const wealthSummary = buildWealthSummaryWithAccounts(
+    assets,
+    activeBankAccounts,
+    activeBrokerAccounts,
   );
   const risk = buildRiskMetrics({
     report: accountReport,
@@ -232,7 +262,7 @@ export function DashboardShell({
         ))}
       </section>
 
-      <section className="mt-4 grid gap-4 xl:grid-cols-3">
+      <section className="mt-4 grid gap-4 xl:grid-cols-5">
         <DashboardRiskCard
           label="Open Positions"
           value={`${openPositionsCount}`}
@@ -250,6 +280,18 @@ export function DashboardShell({
           value={formatMoney(closedNetProfit)}
           tone={closedNetProfit >= 0 ? "positive" : "negative"}
           detail="Closed trades only"
+        />
+        <DashboardRiskCard
+          label="Broker Equity"
+          value={formatMoney(wealthSummary.brokerEquity)}
+          tone={wealthSummary.brokerEquity >= 0 ? "positive" : "negative"}
+          detail="Active broker accounts"
+        />
+        <DashboardRiskCard
+          label="Stocks Value"
+          value={formatMoney(wealthSummary.stocks)}
+          tone={wealthSummary.stocks >= 0 ? "positive" : "negative"}
+          detail="Broker and portfolio stocks"
         />
       </section>
 

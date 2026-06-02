@@ -3,6 +3,10 @@
 import { useSyncExternalStore } from "react";
 import { buildWealthSummaryWithAccounts } from "@/app/_lib/wealth-metrics";
 import {
+  readStoredBrokerAccounts,
+  subscribeToBrokerAccounts,
+} from "@/app/_lib/broker-account-storage";
+import {
   readStoredBankAccounts,
   subscribeToBankAccounts,
 } from "@/app/_lib/bank-account-storage";
@@ -10,16 +14,22 @@ import {
   readStoredWealthAssets,
   subscribeToWealthAssets,
 } from "@/app/_lib/wealth-storage";
-import type { WealthAccount, WealthAsset } from "@/app/_lib/wealth-types";
+import type {
+  WealthAccount,
+  WealthAsset,
+  WealthBrokerAccount,
+} from "@/app/_lib/wealth-types";
 
 const emptyAssets: WealthAsset[] = [];
 const emptyBankAccounts: WealthAccount[] = [];
+const emptyBrokerAccounts: WealthBrokerAccount[] = [];
 const wealthRows = [
   { key: "bankCash", label: "Bank Cash", notes: "Cash held in bank accounts" },
+  { key: "brokerCash", label: "Broker Cash", notes: "Cash held at brokers" },
+  { key: "brokerEquity", label: "Broker Equity", notes: "Cash plus stock and ETF holdings" },
   { key: "cash", label: "Cash", notes: "Cash and USDC balances" },
   { key: "savings", label: "Savings", notes: "Bank savings balances" },
-  { key: "brokerCash", label: "Broker Cash", notes: "Broker settlement cash" },
-  { key: "stocks", label: "Stocks", notes: "Equity holdings" },
+  { key: "stocks", label: "Stocks", notes: "Equity holdings and broker securities" },
   { key: "crypto", label: "Crypto", notes: "Digital asset positions" },
   { key: "realEstate", label: "Real Estate", notes: "Property holdings" },
   { key: "other", label: "Other", notes: "Unclassified wealth assets" },
@@ -72,13 +82,19 @@ export function WealthSummary() {
     readStoredBankAccounts,
     () => emptyBankAccounts,
   );
+  const brokerAccounts = useSyncExternalStore(
+    subscribeToBrokerAccounts,
+    readStoredBrokerAccounts,
+    () => emptyBrokerAccounts,
+  );
 
-  const summary = buildWealthSummaryWithAccounts(assets, bankAccounts);
+  const summary = buildWealthSummaryWithAccounts(assets, bankAccounts, brokerAccounts);
   const summaryValues: Record<WealthRowKey, number> = {
     bankCash: summary.bankCash,
+    brokerCash: summary.brokerCash,
+    brokerEquity: summary.brokerEquity,
     cash: summary.cash,
     savings: summary.savings,
-    brokerCash: summary.brokerCash,
     stocks: summary.stocks,
     crypto: summary.crypto,
     realEstate: summary.realEstate,
@@ -94,6 +110,8 @@ export function WealthSummary() {
           value={formatMoney(summary.totalNetWorth)}
         />
         <SummaryCard label="Bank Cash" value={formatMoney(summary.bankCash)} />
+        <SummaryCard label="Broker Cash" value={formatMoney(summary.brokerCash)} />
+        <SummaryCard label="Broker Equity" value={formatMoney(summary.brokerEquity)} />
         <SummaryCard label="Cash" value={formatMoney(summary.cash)} />
         <SummaryCard label="Savings" value={formatMoney(summary.savings)} />
         <SummaryCard label="Stocks" value={formatMoney(summary.stocks)} />
