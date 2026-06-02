@@ -386,6 +386,7 @@ const sourceTradeHistory: TradeWithOptionalPlaybook[] = (
 
 export const tradeHistory: Trade[] = sourceTradeHistory.map((trade) => ({
   ...trade,
+  source: trade.source ?? "mt5",
   setupTag: trade.setupTag ?? getDefaultSetupTag(trade.setup),
   playbook:
     trade.playbook ??

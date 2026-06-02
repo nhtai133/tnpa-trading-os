@@ -145,11 +145,19 @@ export function RiskModule({
     initialReport,
     initialTrades,
   });
+  const riskTrades = tradeHistory.filter((trade) => {
+    const source = String(trade.source ?? "mt5");
+    return source === "mt5" || (source === "manual" && trade.status === "Open");
+  });
   const risk = buildRiskMetrics({
     report: accountReport,
     settings,
-    trades: tradeHistory,
+    trades: riskTrades,
   });
+  const mt5Trades = tradeHistory.filter((trade) => String(trade.source ?? "mt5") === "mt5");
+  const manualTrades = tradeHistory.filter((trade) => String(trade.source ?? "mt5") === "manual");
+  const manualOpenTrades = manualTrades.filter((trade) => trade.status === "Open");
+  const manualClosedTrades = manualTrades.filter((trade) => trade.status !== "Open");
 
   return (
     <AppShell
@@ -187,6 +195,13 @@ export function RiskModule({
         <MetricCard label="Worst Day" value={risk.worstDay ? signedMoney(risk.worstDay.pnl) : "$0"} />
         <MetricCard label="Risk Status" value={risk.riskLevel} />
         <MetricCard label="FTMO Discipline Score" value={`${risk.disciplineScore}/100`} />
+      </section>
+
+      <section className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="MT5 Trades" value={String(mt5Trades.length)} />
+        <MetricCard label="Manual Trades" value={String(manualTrades.length)} />
+        <MetricCard label="Manual Open Positions" value={String(manualOpenTrades.length)} />
+        <MetricCard label="Manual Closed Trades" value={String(manualClosedTrades.length)} />
       </section>
 
       <section className="mt-6 grid gap-4 xl:grid-cols-4">

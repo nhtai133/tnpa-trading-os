@@ -9,6 +9,7 @@ export const initialTradingReport = null;
 export const fallbackTradeHistory: Trade[] = [
   {
     id: "TNPA-C1",
+    source: "mt5",
     symbol: "XAUUSD",
     setup: "London liquidity sweep",
     setupTag: "Breakout Trendline",
@@ -25,6 +26,7 @@ export const fallbackTradeHistory: Trade[] = [
   },
   {
     id: "TNPA-C2",
+    source: "mt5",
     symbol: "EURUSD",
     setup: "NY continuation",
     setupTag: "Trading Range",
@@ -41,6 +43,7 @@ export const fallbackTradeHistory: Trade[] = [
   },
   {
     id: "TNPA-C3",
+    source: "mt5",
     symbol: "NAS100",
     setup: "Opening range failure",
     setupTag: "Trading Range",
@@ -57,6 +60,7 @@ export const fallbackTradeHistory: Trade[] = [
   },
   {
     id: "TNPA-C4",
+    source: "mt5",
     symbol: "GBPJPY",
     setup: "HTF order block",
     setupTag: "Supply Demand",
@@ -73,6 +77,7 @@ export const fallbackTradeHistory: Trade[] = [
   },
   {
     id: "TNPA-C5",
+    source: "mt5",
     symbol: "US30",
     setup: "Rejection at value high",
     setupTag: "Rectangle Range",

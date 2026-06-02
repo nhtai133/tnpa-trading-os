@@ -31,6 +31,7 @@ import type {
   EquityPoint,
   MonthlyPerformance,
   Mt5AccountReport,
+  TradeSource,
   Trade,
 } from "@/app/_lib/trading-types";
 
@@ -78,7 +79,15 @@ export function useTradingDataset({
 
   return useMemo(() => {
     const report = storedReport ?? initialReport;
-    const trades = [...manualTrades, ...(report?.trades ?? initialTrades)].map((trade) => {
+    const mt5Trades = (report?.trades ?? initialTrades).map((trade) => ({
+      ...trade,
+      source: (trade.source ?? "mt5") as TradeSource,
+    }));
+    const manualTradesWithSource = manualTrades.map((trade) => ({
+      ...trade,
+      source: (trade.source ?? "manual") as TradeSource,
+    }));
+    const trades = [...manualTradesWithSource, ...mt5Trades].map((trade) => {
       const setupTag =
         setupTagOverrides[trade.id] ??
         trade.setupTag ??
@@ -93,6 +102,7 @@ export function useTradingDataset({
           getDefaultPlaybook(trade.setup, setupTag),
         setupTag,
         status: trade.status ?? "Closed",
+        source: trade.source ?? "mt5",
       };
     });
 

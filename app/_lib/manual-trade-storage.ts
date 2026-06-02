@@ -1,11 +1,6 @@
-import { getDefaultSetupTag } from "@/app/_lib/setup-tag-storage";
 import { getDefaultPlaybook } from "@/app/_lib/playbook-storage";
-import type {
-  Playbook,
-  SetupTag,
-  Trade,
-  TradeJournal,
-} from "@/app/_lib/trading-types";
+import { getDefaultSetupTag } from "@/app/_lib/setup-tag-storage";
+import type { Playbook, SetupTag, Trade, TradeJournal } from "@/app/_lib/trading-types";
 
 export type ManualTradeInput = TradeJournal & {
   status: "Open" | "Closed";
@@ -32,6 +27,10 @@ function cleanText(value: unknown) {
   return typeof value === "string" ? value : undefined;
 }
 
+function cleanNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
 function sanitizeTrade(value: unknown): Trade | null {
   if (!value || typeof value !== "object") {
     return null;
@@ -42,11 +41,13 @@ function sanitizeTrade(value: unknown): Trade | null {
   if (!trade.id || !trade.symbol || !trade.side) {
     return null;
   }
+
   const status = trade.status ?? "Closed";
-  const pnl = typeof trade.pnl === "number" ? trade.pnl : 0;
+  const pnl = cleanNumber(trade.pnl) ?? 0;
 
   return {
     id: trade.id,
+    source: "manual",
     symbol: trade.symbol,
     setup: trade.setup ?? "Manual trade",
     setupTag: trade.setupTag ?? getDefaultSetupTag(trade.setup ?? "Manual trade"),
@@ -58,14 +59,18 @@ function sanitizeTrade(value: unknown): Trade | null {
       ),
     status,
     side: trade.side,
-    date: trade.date ?? "",
+    date: trade.date ?? trade.closeTime ?? trade.openTime ?? "",
     session: trade.session ?? "New York",
-    entry: typeof trade.entry === "number" ? trade.entry : 0,
-    exit: typeof trade.exit === "number" ? trade.exit : 0,
-    rr: typeof trade.rr === "number" ? trade.rr : pnl >= 0 ? 1 : -1,
+    openTime: cleanText(trade.openTime),
+    closeTime: cleanText(trade.closeTime),
+    volume: cleanText(trade.volume),
+    openPrice: cleanNumber(trade.openPrice) ?? cleanNumber(trade.entry),
+    closePrice: cleanNumber(trade.closePrice) ?? cleanNumber(trade.exit),
+    entry: cleanNumber(trade.entry) ?? cleanNumber(trade.openPrice) ?? 0,
+    exit: cleanNumber(trade.exit) ?? cleanNumber(trade.closePrice) ?? 0,
+    rr: cleanNumber(trade.rr) ?? (pnl >= 0 ? 1 : -1),
     pnl,
-    floatingPnl:
-      typeof trade.floatingPnl === "number" ? trade.floatingPnl : undefined,
+    floatingPnl: cleanNumber(trade.floatingPnl),
     result: pnl >= 0 ? "Win" : "Loss",
     entryReason: cleanText(trade.entryReason),
     exitReason: cleanText(trade.exitReason),
@@ -83,6 +88,48 @@ function sanitizeTrades(value: unknown) {
   return value
     .map((trade) => sanitizeTrade(trade))
     .filter((trade): trade is Trade => Boolean(trade));
+}
+
+function toTrade(input: ManualTradeInput, tradeId: string): Trade {
+  const status = input.status;
+  const pnl = status === "Closed" ? Number(input.profit) : Number(input.profit || 0);
+  const floatingPnl = input.floatingPnl.trim() ? Number(input.floatingPnl) : undefined;
+  const entry = Number(input.openPrice);
+  const exit = Number(input.closePrice);
+
+  return {
+    id: tradeId,
+    source: "manual",
+    symbol: input.symbol.trim().toUpperCase(),
+    setup: "Manual trade",
+    setupTag: input.setupTag,
+    playbook: input.playbook,
+    status,
+    side: input.side,
+    date: input.closeTime || input.openTime,
+    session: "New York",
+    openTime: input.openTime || undefined,
+    closeTime: input.closeTime || undefined,
+    volume: input.volume || undefined,
+    openPrice: Number.isFinite(entry) ? entry : undefined,
+    closePrice: Number.isFinite(exit) ? exit : undefined,
+    entry: Number.isFinite(entry) ? entry : 0,
+    exit: Number.isFinite(exit) ? exit : 0,
+    rr: pnl >= 0 ? 1 : -1,
+    pnl,
+    floatingPnl:
+      floatingPnl !== undefined && Number.isFinite(floatingPnl)
+        ? floatingPnl
+        : undefined,
+    result: pnl >= 0 ? "Win" : "Loss",
+    entryReason: input.entryReason,
+    exitReason: input.exitReason,
+    emotion: input.emotion,
+    mistake: input.mistake,
+    lessonLearned: input.lessonLearned,
+    entryScreenshot: input.entryScreenshot,
+    exitScreenshot: input.exitScreenshot,
+  };
 }
 
 export function readManualTrades() {
@@ -115,46 +162,24 @@ export function readManualTrades() {
 }
 
 export function writeManualTrade(input: ManualTradeInput) {
-  const status = input.status;
-  const pnl = status === "Closed" ? Number(input.profit) : 0;
-  const floatingPnl = input.floatingPnl.trim()
-    ? Number(input.floatingPnl)
-    : undefined;
-  const entry = Number(input.openPrice);
-  const exit = Number(input.closePrice);
-  const trade: Trade = {
-    id: `MANUAL-${Date.now()}`,
-    symbol: input.symbol.trim().toUpperCase(),
-    setup: "Manual trade",
-    setupTag: input.setupTag,
-    playbook: input.playbook,
-    status,
-    side: input.side,
-    date: input.closeTime || input.openTime,
-    session: "New York",
-    entry: Number.isFinite(entry) ? entry : 0,
-    exit: Number.isFinite(exit) ? exit : 0,
-    rr: pnl >= 0 ? 1 : -1,
-    pnl,
-    floatingPnl:
-      floatingPnl !== undefined && Number.isFinite(floatingPnl)
-        ? floatingPnl
-        : undefined,
-    result: pnl >= 0 ? "Win" : "Loss",
-    entryReason: input.entryReason,
-    exitReason: input.exitReason,
-    emotion: input.emotion,
-    mistake: input.mistake,
-    lessonLearned: input.lessonLearned,
-  };
+  const trade = toTrade(input, `MANUAL-${Date.now()}`);
   const next = [trade, ...readManualTrades()];
   const raw = JSON.stringify(next);
   lastRaw = raw;
   lastParsed = next;
   window.localStorage.setItem(manualTradesStorageKey, raw);
-  window.dispatchEvent(
-    new CustomEvent(manualTradesUpdatedEvent, { detail: next }),
+  window.dispatchEvent(new CustomEvent(manualTradesUpdatedEvent, { detail: next }));
+}
+
+export function updateManualTrade(tradeId: string, input: ManualTradeInput) {
+  const next = readManualTrades().map((trade) =>
+    trade.id === tradeId ? toTrade(input, tradeId) : trade,
   );
+  const raw = JSON.stringify(next);
+  lastRaw = raw;
+  lastParsed = next;
+  window.localStorage.setItem(manualTradesStorageKey, raw);
+  window.dispatchEvent(new CustomEvent(manualTradesUpdatedEvent, { detail: next }));
 }
 
 export function subscribeToManualTrades(onStoreChange: () => void) {

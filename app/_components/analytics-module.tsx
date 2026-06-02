@@ -1,6 +1,7 @@
 "use client";
 
 import { AppShell } from "@/app/_components/app-shell";
+import { useState } from "react";
 import { useTradingDataset } from "@/app/_lib/use-trading-dataset";
 import type {
   EquityPoint,
@@ -414,13 +415,19 @@ export function AnalyticsModule({
   initialReport: Mt5AccountReport | null;
   initialTrades: Trade[];
 }) {
-  const { closedTrades, setupMetrics } = useTradingDataset({
+  const [sourceFilter, setSourceFilter] = useState<"all" | "mt5" | "manual">("all");
+  const { tradeHistory } = useTradingDataset({
     fallbackEquityCurve,
     fallbackMonthlyPerformance,
     initialReport,
     initialTrades,
   });
-  const analyticsTrades = closedTrades;
+  const analyticsTrades = tradeHistory.filter((trade) => {
+    const source = String(trade.source ?? "mt5");
+    if (sourceFilter === "mt5") return source === "mt5";
+    if (sourceFilter === "manual") return source === "manual";
+    return true;
+  }).filter((trade) => trade.status !== "Open");
   const bySymbol = groupMetrics(analyticsTrades, "symbol");
   const bySetup = groupMetrics(analyticsTrades, "setupTag");
   const byPlaybook = groupMetrics(analyticsTrades, "playbook");
@@ -460,9 +467,23 @@ export function AnalyticsModule({
       eyebrow="Performance Intelligence"
       title="Analytics"
       action={
-        <button className="rounded-md border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-emerald-300/40 hover:text-white">
-          Export Analytics
-        </button>
+        <div className="flex items-center gap-3">
+          <label className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+            <span className="mr-2">Source</span>
+            <select
+              className="h-10 rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
+              value={sourceFilter}
+              onChange={(event) => setSourceFilter(event.target.value as "all" | "mt5" | "manual")}
+            >
+              <option value="all">All</option>
+              <option value="mt5">MT5 Only</option>
+              <option value="manual">Manual Only</option>
+            </select>
+          </label>
+          <button className="rounded-md border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-emerald-300/40 hover:text-white">
+            Export Analytics
+          </button>
+        </div>
       }
     >
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -595,15 +616,7 @@ export function AnalyticsModule({
           metric="trades"
         />
         <SetupLeaderboard
-          rows={setupMetrics.map((row) => ({
-            label: row.setupTag,
-            trades: row.trades,
-            winRate: row.winRate,
-            profitFactor: row.profitFactor,
-            pnl: row.netProfit,
-            averageRr: row.averageRr,
-            expectancy: row.trades === 0 ? 0 : row.netProfit / row.trades,
-          }))}
+          rows={bySetup}
         />
         <SetupDistributionChart rows={bySetup} />
         <JournalRankingTable

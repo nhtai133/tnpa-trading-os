@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { useState } from "react";
 import { useTradingDataset } from "../_lib/use-trading-dataset";
 import {
   fallbackEquityCurve,
@@ -12,6 +13,7 @@ import {
 
 type UnknownRecord = Record<string, unknown>;
 type SeriesPoint = { label: string; value: number };
+type TradeSourceFilter = "all" | "mt5" | "manual";
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null;
@@ -170,6 +172,7 @@ function Sparkline({ series }: { series: SeriesPoint[] }) {
 }
 
 export function TradingDashboard() {
+  const [sourceFilter, setSourceFilter] = useState<TradeSourceFilter>("all");
   const dataset = asRecord(
     useTradingDataset({
       fallbackEquityCurve,
@@ -180,14 +183,26 @@ export function TradingDashboard() {
   );
   const metrics = asRecord(dataset.metrics ?? dataset.summary ?? {});
 
-  const trades = asArray(dataset.trades ?? dataset.allTrades ?? dataset.items).map((trade) => asRecord(trade));
-  const openTrades = trades.filter((trade) => String(trade.status ?? "Closed") === "Open");
-  const closedTrades = trades.filter((trade) => String(trade.status ?? "Closed") === "Closed");
+  const trades = asArray(dataset.tradeHistory ?? dataset.trades ?? dataset.allTrades ?? dataset.items).map((trade) =>
+    asRecord(trade),
+  );
+  const filteredTrades = trades.filter((trade) => {
+    const source = String(trade.source ?? "mt5");
+    if (sourceFilter === "mt5") return source === "mt5";
+    if (sourceFilter === "manual") return source === "manual";
+    return true;
+  });
+  const openTrades = filteredTrades.filter((trade) => String(trade.status ?? "Closed") === "Open");
+  const closedTrades = filteredTrades.filter((trade) => String(trade.status ?? "Closed") === "Closed");
 
-  const netProfit = toNumber(metrics.netProfit ?? metrics.closedNetProfit ?? metrics.profit ?? 0);
-  const winRate = toNumber(metrics.winRate ?? metrics.closedWinRate ?? 0);
-  const profitFactor = toNumber(metrics.profitFactor ?? metrics.pf ?? 0);
-  const averageRR = toNumber(metrics.averageRR ?? metrics.avgRR ?? metrics.rr ?? 0);
+  const grossProfit = closedTrades.filter((trade) => toNumber(trade.pnl) > 0).reduce((sum, trade) => sum + toNumber(trade.pnl), 0);
+  const grossLoss = Math.abs(
+    closedTrades.filter((trade) => toNumber(trade.pnl) < 0).reduce((sum, trade) => sum + toNumber(trade.pnl), 0),
+  );
+  const netProfit = closedTrades.reduce((sum, trade) => sum + toNumber(trade.pnl), 0);
+  const winRate = closedTrades.length === 0 ? 0 : (closedTrades.filter((trade) => String(trade.result ?? "") === "Win").length / closedTrades.length) * 100;
+  const profitFactor = grossLoss === 0 ? grossProfit : grossProfit / grossLoss;
+  const averageRR = closedTrades.length === 0 ? 0 : closedTrades.reduce((sum, trade) => sum + toNumber(trade.rr), 0) / closedTrades.length;
   const maxDrawdown = toNumber(metrics.maxDrawdown ?? metrics.drawdown ?? 0);
   const floatingPL = toNumber(
     metrics.floatingPL ??
@@ -196,10 +211,12 @@ export function TradingDashboard() {
   );
 
   const equitySeries = pickSeries(dataset, ["equityCurve", "equityHistory", "equitySeries", "performanceCurve"]);
-  const bestWorstSetup = computeBestWorst(trades, "setupTag");
-  const bestWorstPlaybook = computeBestWorst(trades, "playbook");
+  const bestWorstSetup = computeBestWorst(filteredTrades, "setupTag");
+  const bestWorstPlaybook = computeBestWorst(filteredTrades, "playbook");
   const disciplineScore = toNumber(metrics.disciplineScore ?? dataset.disciplineScore ?? 0);
   const ftmoRiskStatus = String(metrics.riskStatus ?? dataset.riskStatus ?? "Safe");
+  const mt5Count = trades.filter((trade) => String(trade.source ?? "mt5") === "mt5").length;
+  const manualCount = trades.filter((trade) => String(trade.source ?? "mt5") === "manual").length;
 
   return (
     <div className="space-y-6">
@@ -210,6 +227,25 @@ export function TradingDashboard() {
         <MetricCard label="Average RR" value={averageRR ? averageRR.toFixed(2) : "—"} />
         <MetricCard label="Max Drawdown" value={formatMoney(maxDrawdown)} />
       </div>
+
+      <SectionCard title="Data Source" icon="SRC">
+        <div className="grid gap-3 md:grid-cols-[minmax(0,220px)_1fr_1fr] md:items-end">
+          <label className="block">
+            <div className="mb-2 text-xs uppercase tracking-[0.2em] text-slate-400">Source</div>
+            <select
+              className="h-11 w-full rounded-md border border-white/10 bg-slate-900 px-3 text-sm text-slate-100 outline-none focus:border-cyan-400/50"
+              value={sourceFilter}
+              onChange={(event) => setSourceFilter(event.target.value as TradeSourceFilter)}
+            >
+              <option value="all">All</option>
+              <option value="mt5">MT5 Only</option>
+              <option value="manual">Manual Only</option>
+            </select>
+          </label>
+          <MetricCard label="MT5 Trades" value={String(mt5Count)} subvalue="Imported trades" />
+          <MetricCard label="Manual Trades" value={String(manualCount)} subvalue="Local entries" />
+        </div>
+      </SectionCard>
 
       <div className="grid gap-4 xl:grid-cols-[1.5fr_1fr]">
         <SectionCard title="Equity Curve" icon="EQ">

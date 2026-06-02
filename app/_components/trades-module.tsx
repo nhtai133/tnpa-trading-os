@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { AppShell } from "@/app/_components/app-shell";
 import {
   type ManualTradeInput,
+  updateManualTrade,
   writeManualTrade,
 } from "@/app/_lib/manual-trade-storage";
 import { writePlaybookOverride } from "@/app/_lib/playbook-storage";
@@ -46,6 +47,30 @@ const initialManualTrade: ManualTradeInput = {
   lessonLearned: "",
 };
 
+function manualTradeInputFromTrade(trade: Trade): ManualTradeInput {
+  return {
+    status: trade.status,
+    symbol: trade.symbol,
+    side: trade.side,
+    entryScreenshot: trade.entryScreenshot,
+    exitScreenshot: trade.exitScreenshot,
+    openTime: trade.openTime ?? "",
+    closeTime: trade.closeTime ?? "",
+    volume: trade.volume ?? "",
+    openPrice: String(trade.openPrice ?? trade.entry ?? ""),
+    closePrice: String(trade.closePrice ?? trade.exit ?? ""),
+    profit: String(trade.pnl ?? ""),
+    floatingPnl: String(trade.floatingPnl ?? ""),
+    setupTag: trade.setupTag,
+    playbook: trade.playbook,
+    entryReason: trade.entryReason ?? "",
+    exitReason: trade.exitReason ?? "",
+    lessonLearned: trade.lessonLearned ?? "",
+    emotion: trade.emotion,
+    mistake: trade.mistake,
+  };
+}
+
 type FilterState = {
   symbol: string;
   setupTag: string;
@@ -53,6 +78,8 @@ type FilterState = {
   result: string;
   direction: string;
 };
+
+type TradeTab = "all" | "mt5" | "manual" | "open";
 
 function uniqueValues(
   trades: Trade[],
@@ -69,10 +96,12 @@ function money(value: number) {
 function SelectFilter({
   label,
   onChange,
+  includeAll = true,
   options,
   value,
 }: {
   label: string;
+  includeAll?: boolean;
   onChange: (value: string) => void;
   options: string[];
   value: string;
@@ -87,7 +116,7 @@ function SelectFilter({
         value={value}
         onChange={(event) => onChange(event.target.value)}
       >
-        <option value="">All</option>
+        {includeAll ? <option value="">All</option> : null}
         {options.map((option) => (
           <option key={option} value={option}>
             {option}
@@ -204,6 +233,7 @@ function TradeReviewDrawer({
   onClose: () => void;
   trade: Trade;
 }) {
+  const isManual = String(trade.source ?? "mt5") === "manual";
   const [setupTag, setSetupTag] = useState<SetupTag>(trade.setupTag);
   const [playbook, setPlaybook] = useState<Playbook>(trade.playbook);
   const [draft, setDraft] = useState<TradeJournal>({
@@ -215,12 +245,69 @@ function TradeReviewDrawer({
     mistake: trade.mistake,
     lessonLearned: trade.lessonLearned ?? "",
   });
+  const [manualDraft, setManualDraft] = useState<ManualTradeInput>(
+    manualTradeInputFromTrade(trade),
+  );
+  const [error, setError] = useState("");
 
   function updateDraft(key: keyof TradeJournal, value: string) {
     setDraft((current) => ({
       ...current,
       [key]: value || undefined,
     }));
+  }
+
+  function updateManualDraft(key: keyof ManualTradeInput, value: string) {
+    setManualDraft((current) => ({
+      ...current,
+      [key]: value,
+    }));
+  }
+
+  function saveReview() {
+    if (isManual) {
+      if (!manualDraft.symbol.trim()) {
+        setError("Symbol is required.");
+        return;
+      }
+
+      if (!manualDraft.side) {
+        setError("Direction is required.");
+        return;
+      }
+
+      if (manualDraft.status === "Closed" && !manualDraft.closeTime) {
+        setError("Close Time is required for closed trades.");
+        return;
+      }
+
+      if (manualDraft.status === "Closed" && !manualDraft.closePrice.trim()) {
+        setError("Close Price is required for closed trades.");
+        return;
+      }
+
+      if (manualDraft.status === "Closed" && !manualDraft.profit.trim()) {
+        setError("Profit is required for closed trades.");
+        return;
+      }
+
+      if (manualDraft.status === "Closed" && !Number.isFinite(Number(manualDraft.profit))) {
+        setError("Profit must be a number.");
+        return;
+      }
+
+      if (manualDraft.floatingPnl.trim() && !Number.isFinite(Number(manualDraft.floatingPnl))) {
+        setError("Floating P/L must be a number when provided.");
+        return;
+      }
+
+      updateManualTrade(trade.id, manualDraft);
+    }
+
+    writeSetupTagOverride(trade.id, setupTag);
+    writePlaybookOverride(trade.id, playbook);
+    writeTradeJournalOverride(trade.id, draft);
+    onClose();
   }
 
   return (
@@ -236,12 +323,13 @@ function TradeReviewDrawer({
             <div className="text-xs uppercase tracking-[0.2em] text-emerald-300">
               Trade Review
             </div>
-            <h2 className="mt-2 text-2xl font-semibold text-white">
-              {trade.id}
-            </h2>
+            <h2 className="mt-2 text-2xl font-semibold text-white">{trade.id}</h2>
             <p className="mt-1 text-sm text-slate-500">
               {trade.symbol} - {trade.date}
             </p>
+            <div className="mt-3 inline-flex rounded-full border border-white/10 px-2.5 py-1 text-xs font-semibold text-slate-200">
+              {isManual ? "Manual" : "MT5"}
+            </div>
           </div>
           <button
             className="rounded-md border border-white/10 px-3 py-2 text-sm font-semibold text-slate-300"
@@ -250,6 +338,12 @@ function TradeReviewDrawer({
             Close
           </button>
         </div>
+
+        {error ? (
+          <div className="mt-6 rounded-md border border-rose-300/20 bg-rose-400/10 p-4 text-sm font-semibold text-rose-200">
+            {error}
+          </div>
+        ) : null}
 
         <div className="mt-8 grid grid-cols-2 gap-3">
           {[
@@ -263,46 +357,132 @@ function TradeReviewDrawer({
             ["Playbook", trade.playbook],
             ["Original Setup", trade.setup],
           ].map(([label, value]) => (
-            <div
-              className="rounded-md border border-white/10 bg-white/[0.03] p-4"
-              key={label}
-            >
-              <div className="text-xs uppercase tracking-[0.16em] text-slate-500">
-                {label}
-              </div>
-              <div className="mt-2 text-sm font-semibold text-slate-100">
-                {value}
-              </div>
+            <div className="rounded-md border border-white/10 bg-white/[0.03] p-4" key={label}>
+              <div className="text-xs uppercase tracking-[0.16em] text-slate-500">{label}</div>
+              <div className="mt-2 text-sm font-semibold text-slate-100">{value}</div>
             </div>
           ))}
         </div>
 
-        <div className="mt-6 grid gap-4 sm:grid-cols-2">
-          <SelectFilter
-            label="Setup Tag"
-            options={[...setupTags]}
-            value={setupTag}
-            onChange={(value) => setSetupTag(value as SetupTag)}
-          />
-          <SelectFilter
-            label="Playbook"
-            options={[...playbooks]}
-            value={playbook}
-            onChange={(value) => setPlaybook(value as Playbook)}
-          />
-          <SelectFilter
-            label="Emotion"
-            options={[...emotionOptions]}
-            value={draft.emotion ?? ""}
-            onChange={(value) => updateDraft("emotion", value)}
-          />
-          <SelectFilter
-            label="Mistake"
-            options={[...mistakeOptions]}
-            value={draft.mistake ?? ""}
-            onChange={(value) => updateDraft("mistake", value)}
-          />
-        </div>
+        {isManual ? (
+          <div className="mt-6 grid gap-4 sm:grid-cols-2">
+            <TextInputField
+              label="Symbol"
+              value={manualDraft.symbol}
+              onChange={(value) => updateManualDraft("symbol", value)}
+            />
+            <SelectFilter
+              label="Trade Status"
+              options={["Open", "Closed"]}
+              value={manualDraft.status}
+              onChange={(value) => updateManualDraft("status", value)}
+              includeAll={false}
+            />
+            <SelectFilter
+              label="Direction"
+              options={["Long", "Short"]}
+              value={manualDraft.side}
+              onChange={(value) => updateManualDraft("side", value)}
+              includeAll={false}
+            />
+            <TextInputField
+              label="Open Time"
+              type="datetime-local"
+              value={manualDraft.openTime}
+              onChange={(value) => updateManualDraft("openTime", value)}
+            />
+            <TextInputField
+              label="Close Time"
+              type="datetime-local"
+              value={manualDraft.closeTime}
+              onChange={(value) => updateManualDraft("closeTime", value)}
+            />
+            <TextInputField
+              label="Volume"
+              value={manualDraft.volume}
+              onChange={(value) => updateManualDraft("volume", value)}
+            />
+            <TextInputField
+              label="Open Price"
+              value={manualDraft.openPrice}
+              onChange={(value) => updateManualDraft("openPrice", value)}
+            />
+            <TextInputField
+              label="Close Price"
+              value={manualDraft.closePrice}
+              onChange={(value) => updateManualDraft("closePrice", value)}
+            />
+            <TextInputField
+              label={manualDraft.status === "Open" ? "Profit (optional)" : "Profit"}
+              value={manualDraft.profit}
+              onChange={(value) => updateManualDraft("profit", value)}
+            />
+            <TextInputField
+              label="Floating P/L"
+              value={manualDraft.floatingPnl}
+              onChange={(value) => updateManualDraft("floatingPnl", value)}
+            />
+            <SelectFilter
+              label="Setup Tag"
+              options={[...setupTags]}
+              value={manualDraft.setupTag}
+              onChange={(value) => updateManualDraft("setupTag", value)}
+              includeAll={false}
+            />
+            <SelectFilter
+              label="Playbook"
+              options={[...playbooks]}
+              value={manualDraft.playbook}
+              onChange={(value) => updateManualDraft("playbook", value)}
+              includeAll={false}
+            />
+            <SelectFilter
+              label="Emotion"
+              options={[...emotionOptions]}
+              value={manualDraft.emotion ?? ""}
+              onChange={(value) => updateManualDraft("emotion", value)}
+              includeAll={false}
+            />
+            <SelectFilter
+              label="Mistake"
+              options={[...mistakeOptions]}
+              value={manualDraft.mistake ?? ""}
+              onChange={(value) => updateManualDraft("mistake", value)}
+              includeAll={false}
+            />
+          </div>
+        ) : (
+          <div className="mt-6 grid gap-4 sm:grid-cols-2">
+            <SelectFilter
+              label="Setup Tag"
+              options={[...setupTags]}
+              value={setupTag}
+              onChange={(value) => setSetupTag(value as SetupTag)}
+              includeAll={false}
+            />
+            <SelectFilter
+              label="Playbook"
+              options={[...playbooks]}
+              value={playbook}
+              onChange={(value) => setPlaybook(value as Playbook)}
+              includeAll={false}
+            />
+            <SelectFilter
+              label="Emotion"
+              options={[...emotionOptions]}
+              value={draft.emotion ?? ""}
+              onChange={(value) => updateDraft("emotion", value)}
+              includeAll={false}
+            />
+            <SelectFilter
+              label="Mistake"
+              options={[...mistakeOptions]}
+              value={draft.mistake ?? ""}
+              onChange={(value) => updateDraft("mistake", value)}
+              includeAll={false}
+            />
+          </div>
+        )}
 
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
           <ScreenshotPicker
@@ -345,12 +525,7 @@ function TradeReviewDrawer({
           </button>
           <button
             className="rounded-md bg-emerald-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-emerald-300"
-            onClick={() => {
-              writeSetupTagOverride(trade.id, setupTag);
-              writePlaybookOverride(trade.id, playbook);
-              writeTradeJournalOverride(trade.id, draft);
-              onClose();
-            }}
+            onClick={saveReview}
             type="button"
           >
             Save Review
@@ -455,12 +630,14 @@ function CreateTradeDrawer({ onClose }: { onClose: () => void }) {
             options={["Open", "Closed"]}
             value={draft.status}
             onChange={(value) => updateDraft("status", value)}
+            includeAll={false}
           />
           <SelectFilter
             label="Direction"
             options={["Long", "Short"]}
             value={draft.side}
             onChange={(value) => updateDraft("side", value)}
+            includeAll={false}
           />
           <TextInputField
             label="Open Time"
@@ -504,24 +681,28 @@ function CreateTradeDrawer({ onClose }: { onClose: () => void }) {
             options={[...setupTags]}
             value={draft.setupTag}
             onChange={(value) => updateDraft("setupTag", value)}
+            includeAll={false}
           />
           <SelectFilter
             label="Playbook"
             options={[...playbooks]}
             value={draft.playbook}
             onChange={(value) => updateDraft("playbook", value)}
+            includeAll={false}
           />
           <SelectFilter
             label="Emotion"
             options={[...emotionOptions]}
             value={draft.emotion ?? ""}
             onChange={(value) => updateDraft("emotion", value)}
+            includeAll={false}
           />
           <SelectFilter
             label="Mistake"
             options={[...mistakeOptions]}
             value={draft.mistake ?? ""}
             onChange={(value) => updateDraft("mistake", value)}
+            includeAll={false}
           />
         </div>
 
@@ -582,6 +763,7 @@ export function TradesModule({
     initialTrades: trades,
   });
   const [query, setQuery] = useState("");
+  const [activeTab, setActiveTab] = useState<TradeTab>("all");
   const [filters, setFilters] = useState<FilterState>({
     symbol: "",
     setupTag: "",
@@ -594,19 +776,32 @@ export function TradesModule({
   const [creatingTrade, setCreatingTrade] = useState(false);
 
   const symbols = useMemo(() => uniqueValues(tradeHistory, "symbol"), [tradeHistory]);
-  const setupTagOptions = useMemo(
-    () => uniqueValues(tradeHistory, "setupTag"),
-    [tradeHistory],
-  );
-  const playbookOptions = useMemo(
-    () => uniqueValues(tradeHistory, "playbook"),
-    [tradeHistory],
-  );
+  const setupTagOptions = useMemo(() => uniqueValues(tradeHistory, "setupTag"), [tradeHistory]);
+  const playbookOptions = useMemo(() => uniqueValues(tradeHistory, "playbook"), [tradeHistory]);
+
+  const tabTrades = useMemo(() => {
+    return tradeHistory.filter((trade) => {
+      const source = String(trade.source ?? "mt5");
+      if (activeTab === "mt5") {
+        return source === "mt5";
+      }
+
+      if (activeTab === "manual") {
+        return source === "manual";
+      }
+
+      if (activeTab === "open") {
+        return trade.status === "Open";
+      }
+
+      return true;
+    });
+  }, [activeTab, tradeHistory]);
 
   const filteredTrades = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
-    return tradeHistory.filter((trade) => {
+    return tabTrades.filter((trade) => {
       const matchesQuery =
         !normalizedQuery ||
         [
@@ -630,7 +825,7 @@ export function TradesModule({
         (!filters.direction || trade.side === filters.direction)
       );
     });
-  }, [filters, query, tradeHistory]);
+  }, [filters, query, tabTrades]);
 
   const totalPages = Math.max(1, Math.ceil(filteredTrades.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -659,6 +854,30 @@ export function TradesModule({
       }
     >
       <section className="rounded-md border border-white/10 bg-[#0d121c] p-5 shadow-2xl shadow-black/20">
+        <div className="mb-4 flex flex-wrap gap-2">
+          {[
+            ["all", "All Trades"],
+            ["mt5", "Imported MT5"],
+            ["manual", "Manual Trades"],
+            ["open", "Open Positions"],
+          ].map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => {
+                setActiveTab(value as TradeTab);
+                setPage(1);
+              }}
+              className={`rounded-md border px-3 py-2 text-sm font-semibold transition ${
+                activeTab === value
+                  ? "border-emerald-300/40 bg-emerald-400/10 text-emerald-200"
+                  : "border-white/10 bg-white/[0.04] text-slate-300 hover:border-emerald-300/30 hover:text-white"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <div className="grid gap-4 xl:grid-cols-[1.25fr_repeat(5,minmax(0,1fr))]">
           <label className="block">
             <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
@@ -738,11 +957,12 @@ export function TradesModule({
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1120px] text-left text-sm">
             <thead className="bg-white/[0.03] text-xs uppercase tracking-[0.16em] text-slate-500">
-              <tr>
-                <th className="px-5 py-4 font-semibold">Trade</th>
-                <th className="px-5 py-4 font-semibold">Symbol</th>
-                <th className="px-5 py-4 font-semibold">Setup Tag</th>
-                <th className="px-5 py-4 font-semibold">Playbook</th>
+                <tr>
+                  <th className="px-5 py-4 font-semibold">Trade</th>
+                  <th className="px-5 py-4 font-semibold">Source</th>
+                  <th className="px-5 py-4 font-semibold">Symbol</th>
+                  <th className="px-5 py-4 font-semibold">Setup Tag</th>
+                  <th className="px-5 py-4 font-semibold">Playbook</th>
                 <th className="px-5 py-4 font-semibold">Direction</th>
                 <th className="px-5 py-4 font-semibold">Status</th>
                 <th className="px-5 py-4 font-semibold">Session</th>
@@ -772,6 +992,17 @@ export function TradesModule({
                       <div className="mt-1 text-xs text-slate-500">
                         {trade.date}
                       </div>
+                    </td>
+                    <td className="px-5 py-4">
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                          String(trade.source ?? "mt5") === "manual"
+                            ? "bg-sky-400/10 text-sky-300"
+                            : "bg-amber-400/10 text-amber-200"
+                        }`}
+                      >
+                        {String(trade.source ?? "mt5") === "manual" ? "Manual" : "MT5"}
+                      </span>
                     </td>
                     <td className="px-5 py-4 font-semibold text-white">
                       {trade.symbol}

@@ -15,6 +15,8 @@ export type MonthlyPerformance = {
   pnl: number;
 };
 
+export type TradeSource = "mt5" | "manual";
+
 export const setupTags = [
   "Breakout Trendline",
   "Rectangle Range",
@@ -78,6 +80,7 @@ export type TradeJournal = {
 
 export type Trade = {
   id: string;
+  source?: TradeSource;
   symbol: string;
   setup: string;
   setupTag: SetupTag;
@@ -86,6 +89,11 @@ export type Trade = {
   side: "Long" | "Short";
   date: string;
   session: "Asia" | "London" | "New York";
+  openTime?: string;
+  closeTime?: string;
+  volume?: string;
+  openPrice?: number;
+  closePrice?: number;
   entry: number;
   exit: number;
   rr: number;
