@@ -9,13 +9,13 @@ import {
 export default function PropRiskPage() {
   return (
     <RiskModule
-      eyebrow="Prop Trading OS"
+      eyebrow="FTMO OS"
       fallbackEquityCurve={mockEquityCurveFallback}
       fallbackMonthlyPerformance={mockMonthlyPerformanceFallback}
       initialReport={importedMt5Report}
       initialTrades={tradeHistory}
       scopeAccountType="prop-firm"
-      title="Prop Risk Monitor"
+      title="FTMO Risk Monitor"
     />
   );
 }

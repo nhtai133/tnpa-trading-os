@@ -19,8 +19,8 @@ import {
   writeRiskSettings,
 } from "@/app/_lib/risk-settings-storage";
 import {
-  clearDemoPropAccounts,
-  loadDemoPropAccounts,
+  clearDemoFtmoAccounts,
+  loadDemoFtmoAccounts,
 } from "@/app/_lib/prop-account-storage";
 import { useRiskSettings } from "@/app/_lib/use-risk-settings";
 import type { RiskSettings } from "@/app/_lib/trading-types";
@@ -173,7 +173,7 @@ export function SettingsModule() {
       <section className="rounded-md border border-white/10 bg-[#0d121c] p-6 shadow-2xl shadow-black/20">
         <h2 className="text-lg font-semibold text-white">FTMO Risk Rules</h2>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-          Configure the prop-firm risk limits used by Dashboard and Risk Monitor.
+          Configure the FTMO risk limits used by Dashboard and Risk Monitor.
         </p>
 
         <div className="mt-6 grid gap-4 md:grid-cols-3">
@@ -229,9 +229,9 @@ export function SettingsModule() {
       </section>
 
       <section className="mt-6 rounded-md border border-white/10 bg-[#0d121c] p-6 shadow-2xl shadow-black/20">
-        <h2 className="text-lg font-semibold text-white">Demo Prop Accounts</h2>
+        <h2 className="text-lg font-semibold text-white">Demo FTMO Accounts</h2>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">
-          Load the FTMO-style registry used by Prop Dashboard, Challenges, Funded Accounts, Risk, Import, Trades, and Analytics.
+          Load the FTMO account registry used by FTMO Dashboard, Challenges, Funded, Risk, Import, Trades, and Analytics.
         </p>
 
         <div className="mt-6 flex flex-wrap gap-3">
@@ -241,7 +241,7 @@ export function SettingsModule() {
             onClick={() => setConfirmState({ type: "load-prop" })}
             type="button"
           >
-            Load Demo Prop Accounts
+            Load Demo FTMO Accounts
           </button>
           <button
             className="rounded-md border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-emerald-300/40 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
@@ -249,7 +249,7 @@ export function SettingsModule() {
             onClick={() => setConfirmState({ type: "clear-prop" })}
             type="button"
           >
-            Clear Demo Prop Accounts
+            Clear Demo FTMO Accounts
           </button>
         </div>
       </section>
@@ -310,9 +310,9 @@ export function SettingsModule() {
                   } else if (confirmState.type === "clear") {
                     clearDemoData();
                   } else if (confirmState.type === "load-prop") {
-                    loadDemoPropAccounts();
+                    loadDemoFtmoAccounts();
                   } else {
-                    clearDemoPropAccounts();
+                    clearDemoFtmoAccounts();
                   }
                   setIsApplying(false);
                   setConfirmState(null);

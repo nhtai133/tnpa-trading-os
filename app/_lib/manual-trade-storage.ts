@@ -86,7 +86,7 @@ function sanitizeTrade(value: unknown): Trade | null {
     strategyType: trade.strategyType ?? "Swing",
     firmName: accountType === "prop-firm" ? trade.firmName ?? "FTMO" : undefined,
     accountSize: accountType === "prop-firm" ? trade.accountSize ?? 100000 : undefined,
-    challengeType: accountType === "prop-firm" ? trade.challengeType ?? "2-Step Challenge" : undefined,
+    challengeType: accountType === "prop-firm" ? trade.challengeType ?? "FTMO Challenge V2" : undefined,
     phase: accountType === "prop-firm" ? trade.phase ?? "Phase 1" : undefined,
     profitTargetPercent: accountType === "prop-firm" ? trade.profitTargetPercent ?? 10 : undefined,
     dailyLossLimitPercent: accountType === "prop-firm" ? trade.dailyLossLimitPercent ?? 5 : undefined,

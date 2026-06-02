@@ -9,12 +9,12 @@ import {
 export default function PropTradesPage() {
   return (
     <TradesModule
-      eyebrow="Prop Trading OS"
+      eyebrow="FTMO OS"
       fallbackEquityCurve={mockEquityCurveFallback}
       fallbackMonthlyPerformance={mockMonthlyPerformanceFallback}
       initialReport={importedMt5Report}
       scopeAccountType="prop-firm"
-      title="Prop Trades"
+      title="FTMO Trades"
       trades={tradeHistory}
     />
   );

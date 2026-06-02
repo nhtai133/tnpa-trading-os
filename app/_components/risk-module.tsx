@@ -204,7 +204,7 @@ export function RiskModule({
           {scopeAccountType === "prop-firm" && registryAccountNames.length ? (
             <label className="block">
               <span className="mr-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-                Prop Account
+                FTMO Account
               </span>
               <select
                 className="h-10 rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
@@ -228,7 +228,7 @@ export function RiskModule({
       {selectedPropAccount || selectedPropTrade ? (
         <section className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <MetricCard label="Challenge Status" value={selectedPropAccount?.status ?? selectedPropTrade?.propStatus ?? "Active"} />
-          <MetricCard label="Challenge Type" value={selectedPropAccount?.challengeType ?? selectedPropTrade?.challengeType ?? "2-Step Challenge"} />
+          <MetricCard label="Challenge Type" value={selectedPropAccount?.challengeType ?? selectedPropTrade?.challengeType ?? "FTMO Challenge V2"} />
           <MetricCard label="Phase" value={selectedPropAccount?.phase ?? selectedPropTrade?.phase ?? "Phase 1"} />
           <MetricCard label="Account Size" value={money(selectedPropAccount?.accountSize ?? selectedPropTrade?.accountSize ?? risk.accountBalance)} />
         </section>

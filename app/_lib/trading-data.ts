@@ -392,7 +392,7 @@ export const tradeHistory: Trade[] = sourceTradeHistory.map((trade) => ({
   strategyType: trade.strategyType ?? importedMt5Report?.strategyType ?? "Intraweek",
   firmName: trade.firmName ?? importedMt5Report?.firmName ?? "FTMO",
   accountSize: trade.accountSize ?? importedMt5Report?.accountSize ?? 100000,
-  challengeType: trade.challengeType ?? importedMt5Report?.challengeType ?? "2-Step Challenge",
+  challengeType: trade.challengeType ?? importedMt5Report?.challengeType ?? "FTMO Challenge V2",
   phase: trade.phase ?? importedMt5Report?.phase ?? "Phase 1",
   profitTargetPercent: trade.profitTargetPercent ?? importedMt5Report?.profitTargetPercent ?? 10,
   dailyLossLimitPercent: trade.dailyLossLimitPercent ?? importedMt5Report?.dailyLossLimitPercent ?? 5,

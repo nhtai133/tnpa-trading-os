@@ -10,14 +10,14 @@ type NavItem = {
 };
 
 const propTradingItems: NavItem[] = [
-  { href: "/prop-trading", label: "Prop Dashboard", marker: "PD" },
-  { href: "/prop-trading/trades", label: "Prop Trades", marker: "PT" },
-  { href: "/prop-trading/analytics", label: "Prop Analytics", marker: "PX" },
-  { href: "/prop-trading/risk", label: "Prop Risk Monitor", marker: "PR" },
-  { href: "/prop-trading/import-mt5", label: "Prop Import MT5", marker: "PM" },
-  { href: "/prop-trading/accounts", label: "Accounts", marker: "PA" },
+  { href: "/prop-trading", label: "FTMO Dashboard", marker: "FD" },
+  { href: "/prop-trading/trades", label: "FTMO Trades", marker: "FT" },
+  { href: "/prop-trading/analytics", label: "FTMO Analytics", marker: "FX" },
+  { href: "/prop-trading/risk", label: "FTMO Risk Monitor", marker: "FR" },
+  { href: "/prop-trading/import-mt5", label: "FTMO Import MT5", marker: "FM" },
+  { href: "/prop-trading/accounts", label: "FTMO Accounts", marker: "FA" },
   { href: "/prop-trading/challenges", label: "Challenges", marker: "PC" },
-  { href: "/prop-trading/funded-accounts", label: "Funded Accounts", marker: "PF" },
+  { href: "/prop-trading/funded-accounts", label: "FTMO Funded", marker: "FF" },
   { href: "/prop-trading/payouts", label: "Payouts", marker: "PO" },
 ];
 
@@ -103,7 +103,7 @@ export function Sidebar() {
       </Link>
 
       <div className="flex-1 space-y-6 overflow-y-auto">
-        <SidebarSection title="Prop Trading" items={propTradingItems} />
+        <SidebarSection title="FTMO OS" items={propTradingItems} />
         <SidebarSection title="Personal Trading" items={personalTradingItems} />
         <SidebarSection title="Shared Trading" items={sharedTradingItems} />
         <SidebarSection title="Wealth" items={wealthItems} />

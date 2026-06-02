@@ -22,16 +22,28 @@ export type PropAccount = {
 
 const storageKey = "tnpa.prop-accounts.v1";
 const storageEvent = "tnpa:prop-accounts-updated";
+const payoutStorageKey = "tnpa.ftmo-payouts.v1";
+const payoutStorageEvent = "tnpa:ftmo-payouts-updated";
 export const emptyPropAccounts: PropAccount[] = [];
+export type FtmoPayout = {
+  id: string;
+  accountName: string;
+  date: string;
+  amount: number;
+  note: string;
+};
+export const emptyFtmoPayouts: FtmoPayout[] = [];
 
 let lastRaw: string | null = null;
 let lastParsed: PropAccount[] = emptyPropAccounts;
+let lastPayoutRaw: string | null = null;
+let lastPayoutParsed: FtmoPayout[] = emptyFtmoPayouts;
 
 export const demoPropAccountIds = [
-  "DEMO-PROP-FTMO-V2-A",
-  "DEMO-PROP-FTMO-V2-B",
-  "DEMO-PROP-FTMO-V1-A",
-  "DEMO-PROP-FTMO-V1-B",
+  "DEMO-FTMO-V1-100K",
+  "DEMO-FTMO-V1-200K",
+  "DEMO-FTMO-V2-100K-A",
+  "DEMO-FTMO-V2-100K-B",
   "DEMO-PROP-FTMO-LIVE-50K",
 ];
 
@@ -39,9 +51,9 @@ export const demoPropAccounts: PropAccount[] = [
   {
     id: demoPropAccountIds[0],
     firmName: "FTMO",
-    accountName: "FTMO V2 Challenge A",
+    accountName: "FTMO V1 100K",
     accountSize: 100000,
-    challengeType: "2-Step Challenge",
+    challengeType: "FTMO Challenge V1",
     phase: "Phase 1",
     status: "Active",
     startDate: "",
@@ -53,9 +65,9 @@ export const demoPropAccounts: PropAccount[] = [
   {
     id: demoPropAccountIds[1],
     firmName: "FTMO",
-    accountName: "FTMO V2 Challenge B",
-    accountSize: 100000,
-    challengeType: "2-Step Challenge",
+    accountName: "FTMO V1 200K",
+    accountSize: 200000,
+    challengeType: "FTMO Challenge V1",
     phase: "Phase 1",
     status: "Active",
     startDate: "",
@@ -67,9 +79,9 @@ export const demoPropAccounts: PropAccount[] = [
   {
     id: demoPropAccountIds[2],
     firmName: "FTMO",
-    accountName: "FTMO V1 Challenge A",
-    accountSize: 50000,
-    challengeType: "1-Step Challenge",
+    accountName: "FTMO V2 100K A",
+    accountSize: 100000,
+    challengeType: "FTMO Challenge V2",
     phase: "Phase 1",
     status: "Active",
     startDate: "",
@@ -81,9 +93,9 @@ export const demoPropAccounts: PropAccount[] = [
   {
     id: demoPropAccountIds[3],
     firmName: "FTMO",
-    accountName: "FTMO V1 Challenge B",
-    accountSize: 50000,
-    challengeType: "1-Step Challenge",
+    accountName: "FTMO V2 100K B",
+    accountSize: 100000,
+    challengeType: "FTMO Challenge V2",
     phase: "Phase 1",
     status: "Active",
     startDate: "",
@@ -97,7 +109,7 @@ export const demoPropAccounts: PropAccount[] = [
     firmName: "FTMO",
     accountName: "FTMO Live 50K",
     accountSize: 50000,
-    challengeType: "Funded Account",
+    challengeType: "FTMO Funded",
     phase: "Funded",
     status: "Funded",
     startDate: "",
@@ -159,4 +171,46 @@ export function clearDemoPropAccounts() {
   writePropAccounts(
     readStoredPropAccounts().filter((account) => !demoPropAccountIds.includes(account.id)),
   );
+}
+
+export const loadDemoFtmoAccounts = loadDemoPropAccounts;
+export const clearDemoFtmoAccounts = clearDemoPropAccounts;
+
+export function readStoredFtmoPayouts() {
+  if (typeof window === "undefined") return emptyFtmoPayouts;
+
+  const raw = window.localStorage.getItem(payoutStorageKey);
+  if (raw === lastPayoutRaw) return lastPayoutParsed;
+
+  lastPayoutRaw = raw;
+  if (!raw) {
+    lastPayoutParsed = emptyFtmoPayouts;
+    return lastPayoutParsed;
+  }
+
+  try {
+    lastPayoutParsed = JSON.parse(raw) as FtmoPayout[];
+  } catch {
+    lastPayoutParsed = emptyFtmoPayouts;
+  }
+
+  return lastPayoutParsed;
+}
+
+export function writeFtmoPayouts(payouts: FtmoPayout[]) {
+  window.localStorage.setItem(payoutStorageKey, JSON.stringify(payouts));
+  window.dispatchEvent(new Event(payoutStorageEvent));
+}
+
+export function subscribeToFtmoPayouts(callback: () => void) {
+  if (typeof window === "undefined") return () => undefined;
+
+  const listener = () => callback();
+  window.addEventListener("storage", listener);
+  window.addEventListener(payoutStorageEvent, listener);
+
+  return () => {
+    window.removeEventListener("storage", listener);
+    window.removeEventListener(payoutStorageEvent, listener);
+  };
 }

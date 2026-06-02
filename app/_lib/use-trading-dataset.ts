@@ -75,7 +75,7 @@ function defaultPropFirmName(report: Mt5AccountReport | null): PropFirmName {
 }
 
 function defaultChallengeType(report: Mt5AccountReport | null): ChallengeType {
-  return report?.challengeType ?? "2-Step Challenge";
+  return report?.challengeType ?? "FTMO Challenge V2";
 }
 
 function defaultPhase(report: Mt5AccountReport | null): PropPhase {

@@ -9,13 +9,13 @@ import {
 export default function PropAnalyticsPage() {
   return (
     <AnalyticsModule
-      eyebrow="Prop Trading OS"
+      eyebrow="FTMO OS"
       fallbackEquityCurve={mockEquityCurveFallback}
       fallbackMonthlyPerformance={mockMonthlyPerformanceFallback}
       initialReport={importedMt5Report}
       initialTrades={tradeHistory}
       scopeAccountType="prop-firm"
-      title="Prop Analytics"
+      title="FTMO Analytics"
     />
   );
 }

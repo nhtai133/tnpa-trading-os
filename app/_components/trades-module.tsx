@@ -55,7 +55,7 @@ const initialManualTrade: ManualTradeInput = {
   strategyType: "Swing",
   firmName: "FTMO",
   accountSize: "100000",
-  challengeType: "2-Step Challenge",
+  challengeType: "FTMO Challenge V2",
   phase: "Phase 1",
   profitTargetPercent: "10",
   dailyLossLimitPercent: "5",
@@ -87,7 +87,7 @@ function manualTradeInputFromTrade(trade: Trade): ManualTradeInput {
     strategyType: trade.strategyType ?? "Swing",
     firmName: trade.firmName ?? "FTMO",
     accountSize: String(trade.accountSize ?? 100000),
-    challengeType: trade.challengeType ?? "2-Step Challenge",
+    challengeType: trade.challengeType ?? "FTMO Challenge V2",
     phase: trade.phase ?? "Phase 1",
     profitTargetPercent: String(trade.profitTargetPercent ?? 10),
     dailyLossLimitPercent: String(trade.dailyLossLimitPercent ?? 5),
@@ -1215,7 +1215,7 @@ export function TradesModule({
           {scopeAccountType === "prop-firm" && registryAccountNames.length ? (
             <label className="block">
               <span className="mr-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-                Prop Account
+                FTMO Account
               </span>
               <select
                 className="h-10 rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"

@@ -538,7 +538,7 @@ export function AnalyticsModule({
         <div className="flex items-center gap-3">
           {scopeAccountType === "prop-firm" && registryAccountNames.length ? (
             <label className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
-              <span className="mr-2">Prop Account</span>
+              <span className="mr-2">FTMO Account</span>
               <select
                 className="h-10 rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
                 value={activeRegistryAccountName}

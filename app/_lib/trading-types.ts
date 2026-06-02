@@ -35,10 +35,11 @@ export const strategyTypes = [
 export type StrategyType = (typeof strategyTypes)[number];
 
 export const propFirmAccountNames = [
-  "FTMO",
-  "Funding Pips",
-  "The5ers",
-  "Other",
+  "FTMO V1 100K",
+  "FTMO V1 200K",
+  "FTMO V2 100K A",
+  "FTMO V2 100K B",
+  "FTMO Live 50K",
 ] as const;
 
 export const brokerAccountNames = [
@@ -50,14 +51,14 @@ export const brokerAccountNames = [
 ] as const;
 
 export const challengeTypes = [
-  "1-Step Challenge",
-  "2-Step Challenge",
-  "Funded Account",
+  "FTMO Challenge V1",
+  "FTMO Challenge V2",
+  "FTMO Funded",
   "Other",
 ] as const;
 export type ChallengeType = (typeof challengeTypes)[number];
 
-export const propFirmNames = ["FTMO", "Funding Pips", "The5ers", "Other"] as const;
+export const propFirmNames = ["FTMO"] as const;
 export type PropFirmName = (typeof propFirmNames)[number];
 
 export const propPhases = ["Phase 1", "Phase 2", "Funded"] as const;

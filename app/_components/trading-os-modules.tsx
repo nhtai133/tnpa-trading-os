@@ -5,7 +5,10 @@ import type { ReactNode } from "react";
 import { AppShell } from "@/app/_components/app-shell";
 import {
   emptyPropAccounts,
+  emptyFtmoPayouts,
+  readStoredFtmoPayouts,
   readStoredPropAccounts,
+  subscribeToFtmoPayouts,
   subscribeToPropAccounts,
   type PropAccount,
 } from "@/app/_lib/prop-account-storage";
@@ -407,15 +410,15 @@ export function PropAccountsModule() {
   const rows = accountSummaries(trades);
 
   return (
-    <AppShell eyebrow="Prop Trading OS" title="Prop Accounts">
+    <AppShell eyebrow="FTMO OS" title="FTMO Accounts">
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Registry Accounts" value={`${registryAccounts.length || rows.length}`} />
         <MetricCard label="Active Accounts" value={`${registryAccounts.filter((row) => row.status === "Active").length || rows.filter((row) => row.status === "Active").length}`} />
-        <MetricCard label="Total Prop P/L" value={money(netProfit(trades))} tone={netProfit(trades) >= 0 ? "text-emerald-300" : "text-rose-300"} />
+        <MetricCard label="Total FTMO P/L" value={money(netProfit(trades))} tone={netProfit(trades) >= 0 ? "text-emerald-300" : "text-rose-300"} />
         <MetricCard label="Open Positions" value={`${openTrades(trades).length}`} />
       </section>
       <div className="mt-6">
-        <Section title="Prop Account Registry">
+        <Section title="FTMO Account Registry">
           {registryAccounts.length ? (
             <div className="grid gap-3 lg:grid-cols-2">
               {registryAccounts.map((account) => (
@@ -437,7 +440,7 @@ export function PropAccountsModule() {
           ) : rows.length ? (
             <AccountTable rows={rows} mode="prop" />
           ) : (
-            <EmptyState text="No prop account registry records found. Load demo prop accounts from Settings." />
+            <EmptyState text="No FTMO account registry records found. Load demo FTMO accounts from Settings." />
           )}
         </Section>
       </div>
@@ -448,13 +451,13 @@ export function PropAccountsModule() {
 export function PropChallengesModule() {
   const { accountReport, trades } = useTradingOsData("prop-firm");
   const registryAccounts = usePropAccountRegistry();
-  const challengeAccounts = registryAccounts.filter((account) => account.challengeType !== "Funded Account" && account.phase !== "Funded");
+  const challengeAccounts = registryAccounts.filter((account) => account.challengeType !== "FTMO Funded" && account.phase !== "Funded");
   const activeAccounts = challengeAccounts.filter((account) => account.status === "Active");
   const passedAccounts = challengeAccounts.filter((account) => account.status === "Passed");
   const failedAccounts = challengeAccounts.filter((account) => account.status === "Failed");
 
   return (
-    <AppShell eyebrow="Prop Trading OS" title="Challenges">
+    <AppShell eyebrow="FTMO OS" title="FTMO Challenges">
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Active Challenges" value={`${activeAccounts.length}`} />
         <MetricCard label="Passed Challenges" value={`${passedAccounts.length}`} />
@@ -488,11 +491,16 @@ export function PropFundedAccountsModule() {
   const { accountReport, trades } = useTradingOsData("prop-firm");
   const settings = useRiskSettings();
   const fundedAccounts = usePropAccountRegistry().filter((account) => account.status === "Funded" || account.phase === "Funded");
+  const payouts = useSyncExternalStore(
+    subscribeToFtmoPayouts,
+    readStoredFtmoPayouts,
+    () => emptyFtmoPayouts,
+  );
 
   return (
-    <AppShell eyebrow="Prop Trading OS" title="Funded Accounts">
+    <AppShell eyebrow="FTMO OS" title="FTMO Funded">
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Funded Accounts" value={`${fundedAccounts.length}`} />
+        <MetricCard label="FTMO Funded Accounts" value={`${fundedAccounts.length}`} />
         <MetricCard label="Funded Net Profit" value={money(fundedAccounts.reduce((sum, account) => sum + netProfit(tradesForPropAccount(trades, account)), 0))} />
         <MetricCard label="Open Funded Positions" value={`${fundedAccounts.reduce((sum, account) => sum + openTrades(tradesForPropAccount(trades, account)).length, 0)}`} />
         <MetricCard label="Payout Ready" value={`${fundedAccounts.filter((account) => netProfit(tradesForPropAccount(trades, account)) > 0).length}`} />
@@ -504,20 +512,41 @@ export function PropFundedAccountsModule() {
             const risk = buildRiskMetrics({ report: accountReport, settings, trades: accountTrades });
             const pnl = netProfit(accountTrades);
             const openPositions = openTrades(accountTrades).length;
+            const accountPayouts = payouts.filter((payout) => payout.accountName === account.accountName);
+            const lifetimePayout = accountPayouts.reduce((sum, payout) => sum + payout.amount, 0);
+            const estimatedNextPayout = Math.max(0, pnl - lifetimePayout) * 0.8;
+            const payoutReady = estimatedNextPayout > 0 && risk.riskLevel !== "Breach" && openPositions === 0;
             return (
               <Section title={account.accountName} key={account.id}>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <MetricCard label="Account Size" value={plainMoney(account.accountSize)} />
-                  <MetricCard label="Net Profit" value={money(pnl)} tone={pnl >= 0 ? "text-emerald-300" : "text-rose-300"} />
-                  <MetricCard label="Payout Ready" value={pnl > 0 && risk.riskLevel !== "Breach" ? "Yes" : "No"} />
+                  <MetricCard label="Current Profit" value={money(pnl)} tone={pnl >= 0 ? "text-emerald-300" : "text-rose-300"} />
+                  <MetricCard label="Lifetime Payout" value={plainMoney(lifetimePayout)} />
+                  <MetricCard label="Estimated Next Payout" value={plainMoney(estimatedNextPayout)} />
+                  <MetricCard label="Payout Readiness" value={payoutReady ? "Ready" : "Not Ready"} tone={payoutReady ? "text-emerald-300" : "text-amber-300"} />
                   <MetricCard label="Open Positions" value={`${openPositions}`} />
                   <MetricCard label="Risk Status" value={risk.riskLevel} tone={risk.riskLevel === "Breach" ? "text-rose-300" : "text-emerald-300"} />
+                </div>
+                <div className="mt-5 rounded-md border border-white/10 bg-white/[0.03] p-4">
+                  <h3 className="text-sm font-semibold text-white">Payout History</h3>
+                  <div className="mt-3 space-y-2">
+                    {accountPayouts.length ? (
+                      accountPayouts.map((payout) => (
+                        <div className="flex items-center justify-between gap-3 text-sm" key={payout.id}>
+                          <span className="text-slate-300">{payout.date}</span>
+                          <span className="font-semibold text-emerald-300">{plainMoney(payout.amount)}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="text-sm text-slate-500">No payout history recorded.</div>
+                    )}
+                  </div>
                 </div>
               </Section>
             );
           })
         ) : (
-          <Section title="Funded Accounts"><EmptyState text="No funded prop accounts found. Load demo prop accounts from Settings." /></Section>
+          <Section title="FTMO Funded"><EmptyState text="No FTMO funded accounts found. Load demo FTMO accounts from Settings." /></Section>
         )}
       </div>
     </AppShell>
@@ -530,7 +559,7 @@ export function PropPayoutsModule() {
   const ready = rows.filter((row) => row.closedPnl > 0 && row.status !== "Failed");
 
   return (
-    <AppShell eyebrow="Prop Trading OS" title="Payouts">
+    <AppShell eyebrow="FTMO OS" title="FTMO Payouts">
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Payout Ready Accounts" value={`${ready.length}`} />
         <MetricCard label="Estimated Payout Pool" value={money(ready.reduce((sum, row) => sum + row.closedPnl, 0))} tone="text-emerald-300" />
@@ -555,7 +584,7 @@ export function PropPayoutsModule() {
               ))}
             </div>
           ) : (
-            <EmptyState text="No prop accounts found for payout review." />
+            <EmptyState text="No FTMO accounts found for payout review." />
           )}
         </Section>
       </div>
@@ -570,9 +599,9 @@ export function PropAnalyticsModule() {
   const setupRows = groupedMetricRows(trades, (trade) => trade.setupTag);
 
   return (
-    <AppShell eyebrow="Prop Trading OS" title="Prop Analytics">
+    <AppShell eyebrow="FTMO OS" title="FTMO Analytics">
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Prop Net Profit" value={money(netProfit(trades))} tone={netProfit(trades) >= 0 ? "text-emerald-300" : "text-rose-300"} />
+        <MetricCard label="FTMO Net Profit" value={money(netProfit(trades))} tone={netProfit(trades) >= 0 ? "text-emerald-300" : "text-rose-300"} />
         <MetricCard label="Win Rate" value={percent(winRate(trades))} />
         <MetricCard label="Profit Factor" value={profitFactor(trades).toFixed(2)} />
         <MetricCard label="Expectancy" value={money(expectancy(trades))} />

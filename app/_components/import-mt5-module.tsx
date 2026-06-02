@@ -180,7 +180,7 @@ export function ImportMt5Module({
     String(defaultAccountType === "prop-firm" ? 100000 : report?.accountSize ?? 100000),
   );
   const [challengeType, setChallengeType] = useState<ChallengeType>(
-    defaultAccountType === "prop-firm" ? "2-Step Challenge" : report?.challengeType ?? "2-Step Challenge",
+    defaultAccountType === "prop-firm" ? "FTMO Challenge V2" : report?.challengeType ?? "FTMO Challenge V2",
   );
   const [phase, setPhase] = useState<PropPhase>(
     defaultAccountType === "prop-firm" ? "Phase 1" : report?.phase ?? "Phase 1",

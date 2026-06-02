@@ -5,11 +5,11 @@ export default function PropImportMt5Page() {
   return (
     <ImportMt5Module
       defaultAccountType="prop-firm"
-      eyebrow="Prop Trading OS"
+      eyebrow="FTMO OS"
       initialReport={importedMt5Report}
       lockAccountType
       requirePropMetadata
-      title="Prop Import MT5"
+      title="FTMO Import MT5"
     />
   );
 }

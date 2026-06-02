@@ -236,14 +236,14 @@ export function PropTradingDashboard() {
 
   return (
     <AppShell
-      eyebrow="Prop Trading OS"
-      title="Prop Trading"
+      eyebrow="FTMO OS"
+      title="FTMO Dashboard"
       action={<AccountSelector accountName={selectedAccountName} accountNames={accountNames} onChange={setAccountName} />}
     >
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Account Size" value={plainMoney(accountSize)} />
         <BadgeCard label="Firm" value={selectedRegistryAccount?.firmName ?? selected?.firmName ?? "FTMO"} />
-        <BadgeCard label="Challenge Type" value={selectedRegistryAccount?.challengeType ?? selected?.challengeType ?? "2-Step Challenge"} />
+        <BadgeCard label="Challenge Type" value={selectedRegistryAccount?.challengeType ?? selected?.challengeType ?? "FTMO Challenge V2"} />
         <BadgeCard label="Phase" value={selectedRegistryAccount?.phase ?? selected?.phase ?? "Phase 1"} />
         <MetricCard label="Status" value={selectedRegistryAccount?.status ?? selected?.propStatus ?? "Active"} />
         <MetricCard
