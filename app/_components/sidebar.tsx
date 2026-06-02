@@ -13,6 +13,7 @@ const propTradingItems: NavItem[] = [
   { href: "/prop-trading", label: "FTMO Dashboard", marker: "FD" },
   { href: "/prop-trading/trades", label: "FTMO Trades", marker: "FT" },
   { href: "/prop-trading/analytics", label: "FTMO Analytics", marker: "FX" },
+  { href: "/prop-trading/setup-intelligence", label: "Setup Intelligence", marker: "SI" },
   { href: "/prop-trading/risk", label: "FTMO Risk Monitor", marker: "FR" },
   { href: "/prop-trading/import-mt5", label: "FTMO Import MT5", marker: "FM" },
   { href: "/prop-trading/accounts", label: "FTMO Accounts", marker: "FA" },
