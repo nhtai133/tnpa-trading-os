@@ -72,21 +72,36 @@ function countTradingDays(trades: Trade[]) {
 
 function nextPropAction({
   canTradeToday,
+  maxLossUsage,
   phase,
   profitTargetProgress,
   riskLevel,
 }: {
   canTradeToday: string;
+  maxLossUsage?: number;
   phase: string;
   profitTargetProgress: number;
   riskLevel: string;
 }) {
   if (canTradeToday === "Stop") return "Stop Trading Today";
   if (riskLevel === "Breach" || riskLevel === "Danger") return "Rule Danger";
+  if ((maxLossUsage ?? 0) >= 70) return "Trade Small Size";
   if (phase === "Funded" && profitTargetProgress >= 10) return "Payout Ready";
-  if (profitTargetProgress >= 100) return "Ready For Funded";
+  if (phase === "Funded") return "Protect Funded";
+  if (profitTargetProgress >= 100) return "Close To Passing";
   if (profitTargetProgress >= 90) return "Close To Passing";
   return "Keep Trading";
+}
+
+function clampScore(value: number) {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function missionForAccount(account: PropAccount, payoutReady: boolean) {
+  if (payoutReady) return "Prepare For Payout";
+  if (account.phase === "Funded") return "Protect Funded Account";
+  if (account.phase === "Phase 2") return "Pass Phase 2";
+  return "Pass Phase 1";
 }
 
 function closedNetProfit(trades: Trade[]) {
@@ -124,6 +139,29 @@ function StatusBadge({ value }: { value: string }) {
     <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${statusBadgeTone(value)}`}>
       {value}
     </span>
+  );
+}
+
+function CommandItem({
+  label,
+  metric,
+}: {
+  label: string;
+  metric: ReturnType<typeof buildFtmoAccountMetrics> | null;
+}) {
+  return (
+    <div className="rounded-md border border-white/10 bg-white/[0.03] p-4">
+      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</div>
+      <div className="mt-3 text-lg font-semibold text-white">
+        {metric?.account.accountName ?? "None"}
+      </div>
+      <div className="mt-3">
+        {metric ? <StatusBadge value={metric.payoutReady ? "Payout Ready" : metric.visualStatus} /> : <StatusBadge value="Safe" />}
+      </div>
+      <div className="mt-3 text-sm text-slate-400">
+        {metric?.nextAction ?? "No action required"}
+      </div>
+    </div>
   );
 }
 
@@ -187,10 +225,24 @@ function buildFtmoAccountMetrics({
     risk.riskLevel !== "Breach";
   const nextAction = nextPropAction({
     canTradeToday,
+    maxLossUsage: risk.maxLossUsage,
     phase: account.phase,
     profitTargetProgress: targetProgress,
     riskLevel: risk.riskLevel,
   });
+  const targetScore = account.phase === "Funded" ? 75 : Math.min(100, Math.max(0, targetProgress));
+  const dailyLossScore = Math.min(100, (dailyLossRemaining / Math.max(1, account.accountSize * (account.dailyLossLimitPercent / 100))) * 100);
+  const maxLossScore = Math.min(100, (maxLossRemaining / Math.max(1, account.accountSize * (account.maxLossLimitPercent / 100))) * 100);
+  const tradingDaysScore = account.minimumTradingDays === 0 ? 100 : Math.min(100, tradingDaysProgress);
+  const openRiskScore = openPositionCount(accountTrades) > 0 ? 70 : 100;
+  const healthScore = clampScore(
+    targetScore * 0.2 +
+      dailyLossScore * 0.2 +
+      maxLossScore * 0.2 +
+      tradingDaysScore * 0.15 +
+      risk.disciplineScore * 0.15 +
+      openRiskScore * 0.1,
+  );
   const visualStatus = payoutReady
     ? "Payout Ready"
     : account.phase === "Funded"
@@ -219,6 +271,13 @@ function buildFtmoAccountMetrics({
     targetRemaining,
     tradingDays: days,
     tradingDaysProgress,
+    healthScore,
+    mission: missionForAccount(account, payoutReady),
+    riskBudgetRemaining: Math.min(dailyLossRemaining, maxLossRemaining),
+    suggestedDailyProfitPace:
+      account.phase === "Funded" || targetRemaining === 0
+        ? 0
+        : targetRemaining / Math.max(1, account.minimumTradingDays - days),
     visualStatus,
   };
 }
@@ -367,6 +426,25 @@ export function PropTradingDashboard() {
       trades: allPropTrades,
     }),
   );
+  const healthRanking = [...accountMetrics].sort((a, b) => b.healthScore - a.healthScore);
+  const tradableAccounts = accountMetrics.filter(
+    (row) => row.canTradeToday !== "Stop" && row.visualStatus !== "Danger" && row.account.phase !== "Funded",
+  );
+  const bestAccountToTrade = [...tradableAccounts].sort((a, b) => b.healthScore - a.healthScore)[0] ?? null;
+  const accountToAvoid =
+    [...accountMetrics].sort((a, b) => a.healthScore - b.healthScore)[0] ?? null;
+  const accountNearPassing =
+    accountMetrics
+      .filter((row) => row.account.phase !== "Funded")
+      .sort((a, b) => b.targetProgress - a.targetProgress)[0] ?? null;
+  const accountNearPayout =
+    accountMetrics
+      .filter((row) => row.account.phase === "Funded")
+      .sort((a, b) => b.estimatedNextPayout - a.estimatedNextPayout)[0] ?? null;
+  const accountAtRisk =
+    accountMetrics
+      .filter((row) => row.visualStatus === "Warning" || row.visualStatus === "Danger")
+      .sort((a, b) => a.healthScore - b.healthScore)[0] ?? accountToAvoid;
   const isAllAccounts = !selectedAccountName;
   const totalChallengeCapital = ftmoAccounts
     .filter((account) => account.phase !== "Funded")
@@ -401,6 +479,7 @@ export function PropTradingDashboard() {
   const canTradeToday = risk.dailyLossUsage >= 100 || risk.riskLevel === "Breach" ? "Stop" : risk.dailyLossUsage >= 70 ? "Warning" : "Yes";
   const nextAction = nextPropAction({
     canTradeToday,
+    maxLossUsage: risk.maxLossUsage,
     phase: selectedRegistryAccount?.phase ?? selected?.phase ?? "Phase 1",
     profitTargetProgress,
     riskLevel: risk.riskLevel,
@@ -423,6 +502,92 @@ export function PropTradingDashboard() {
             <MetricCard label="Accounts At Risk" value={`${accountsAtRisk}`} tone={accountsAtRisk ? "text-amber-300" : "text-white"} />
             <MetricCard label="Total Profit Target Remaining" value={plainMoney(totalProfitTargetRemaining)} />
             <MetricCard label="Total Lifetime Payout" value={plainMoney(totalLifetimePayout)} />
+          </section>
+
+          <section className="mt-6 rounded-md border border-white/10 bg-[#0d121c] p-5 shadow-2xl shadow-black/20">
+            <div>
+              <h2 className="text-base font-semibold text-white">Daily Command Panel</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Account-level priorities generated from FTMO risk, target progress, payout readiness, and health score.
+              </p>
+            </div>
+            <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+              <CommandItem label="Best Account To Trade Today" metric={bestAccountToTrade} />
+              <CommandItem label="Account To Avoid Today" metric={accountToAvoid} />
+              <CommandItem label="Account Near Passing" metric={accountNearPassing} />
+              <CommandItem label="Account Near Payout" metric={accountNearPayout} />
+              <CommandItem label="Account At Risk" metric={accountAtRisk} />
+            </div>
+          </section>
+
+          <section className="mt-6 rounded-md border border-white/10 bg-[#0d121c] shadow-2xl shadow-black/20">
+            <div className="border-b border-white/10 p-5">
+              <h2 className="text-base font-semibold text-white">Account Health Ranking</h2>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[760px] text-left text-sm">
+                <thead className="bg-white/[0.03] text-xs uppercase tracking-[0.14em] text-slate-500">
+                  <tr>
+                    <th className="px-5 py-4 font-semibold">Rank</th>
+                    <th className="px-5 py-4 font-semibold">Account</th>
+                    <th className="px-5 py-4 font-semibold">Health Score</th>
+                    <th className="px-5 py-4 font-semibold">Status</th>
+                    <th className="px-5 py-4 font-semibold">Recommended Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/10">
+                  {healthRanking.map((row, index) => (
+                    <tr className="text-slate-300" key={row.account.id}>
+                      <td className="px-5 py-4 font-semibold text-white">#{index + 1}</td>
+                      <td className="px-5 py-4 font-semibold text-white">{row.account.accountName}</td>
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <span className="w-10 font-semibold text-white">{row.healthScore}</span>
+                          <div className="h-2 w-36 rounded-full bg-white/[0.06]">
+                            <div
+                              className={`h-2 rounded-full ${
+                                row.healthScore >= 80 ? "bg-emerald-400" : row.healthScore >= 60 ? "bg-amber-300" : "bg-rose-400"
+                              }`}
+                              style={{ width: `${row.healthScore}%` }}
+                            />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4"><StatusBadge value={row.visualStatus} /></td>
+                      <td className="px-5 py-4"><StatusBadge value={row.payoutReady ? "Payout Ready" : row.nextAction} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section className="mt-6 grid gap-4 xl:grid-cols-2">
+            {accountMetrics.map((row) => (
+              <section className="rounded-md border border-white/10 bg-[#0d121c] p-5 shadow-2xl shadow-black/20" key={row.account.id}>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Mission</div>
+                    <h2 className="mt-2 text-lg font-semibold text-white">{row.account.accountName}</h2>
+                  </div>
+                  <StatusBadge value={row.mission} />
+                </div>
+                <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-md border border-white/10 bg-white/[0.03] p-4">
+                    <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Remaining To Target</div>
+                    <div className="mt-2 font-semibold text-white">{plainMoney(row.targetRemaining)}</div>
+                  </div>
+                  <div className="rounded-md border border-white/10 bg-white/[0.03] p-4">
+                    <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Daily Profit Pace</div>
+                    <div className="mt-2 font-semibold text-white">{plainMoney(row.suggestedDailyProfitPace)}</div>
+                  </div>
+                  <div className="rounded-md border border-white/10 bg-white/[0.03] p-4">
+                    <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Risk Budget Remaining</div>
+                    <div className="mt-2 font-semibold text-white">{plainMoney(row.riskBudgetRemaining)}</div>
+                  </div>
+                </div>
+              </section>
+            ))}
           </section>
 
           <section className="mt-6 rounded-md border border-white/10 bg-[#0d121c] shadow-2xl shadow-black/20">
