@@ -1,11 +1,10 @@
-import { PlaceholderModule } from "@/app/_components/placeholder-module";
+import { AppShell } from "@/app/_components/app-shell";
+import { WealthSummary } from "@/app/_components/wealth-summary";
 
 export default function NetWorthPage() {
   return (
-    <PlaceholderModule
-      eyebrow="Wealth"
-      title="Net Worth"
-      description="This section is reserved for consolidated net worth tracking across trading capital, bank balances, savings, and assets."
-    />
+    <AppShell eyebrow="Wealth" title="Net Worth">
+      <WealthSummary />
+    </AppShell>
   );
 }

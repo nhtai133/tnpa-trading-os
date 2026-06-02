@@ -1,11 +1,10 @@
-import { PlaceholderModule } from "@/app/_components/placeholder-module";
+import { AppShell } from "@/app/_components/app-shell";
+import { WealthSummary } from "@/app/_components/wealth-summary";
 
 export default function PortfolioPage() {
   return (
-    <PlaceholderModule
-      eyebrow="Wealth"
-      title="Portfolio"
-      description="This section will hold the portfolio view for non-trading assets, allocations, and performance tracking."
-    />
+    <AppShell eyebrow="Wealth" title="Portfolio">
+      <WealthSummary />
+    </AppShell>
   );
 }
