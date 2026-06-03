@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useHydrated } from "@/app/_lib/use-hydrated";
 
 type NavItem = {
   href: string;
@@ -51,6 +52,7 @@ const systemItems: NavItem[] = [{ href: "/settings", label: "Settings", marker: 
 
 function SidebarSection({ title, items }: { title: string; items: NavItem[] }) {
   const pathname = usePathname();
+  const hydrated = useHydrated();
 
   return (
     <div className="space-y-2">
@@ -62,10 +64,11 @@ function SidebarSection({ title, items }: { title: string; items: NavItem[] }) {
             item.href === "/personal-trading" ||
             item.href === "/wealth";
           const active =
-            pathname === item.href ||
+            hydrated &&
+            (pathname === item.href ||
             (item.href !== "/" &&
               !isSectionDashboard &&
-              pathname.startsWith(`${item.href}/`));
+              pathname.startsWith(`${item.href}/`)));
           return (
             <Link
               key={item.href}

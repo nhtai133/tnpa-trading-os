@@ -3,8 +3,12 @@ export const assetClasses = [
   "Bank Savings",
   "Broker Cash",
   "Stocks",
+  "ETF",
+  "Mutual Fund",
   "Crypto",
   "Real Estate",
+  "Loan",
+  "Vehicle",
   "USDC",
   "Other",
 ] as const;

@@ -11,6 +11,12 @@ import {
   subscribeToPropAccounts,
   type PropAccount,
 } from "@/app/_lib/prop-account-storage";
+import {
+  emptyPersonalTradingAccounts,
+  readStoredPersonalTradingAccounts,
+  subscribeToPersonalTradingAccounts,
+} from "@/app/_lib/personal-account-storage";
+import { useHydrated } from "@/app/_lib/use-hydrated";
 import { buildRiskMetrics } from "@/app/_lib/risk-metrics";
 import { useRiskSettings } from "@/app/_lib/use-risk-settings";
 import { useTradingDataset } from "@/app/_lib/use-trading-dataset";
@@ -397,17 +403,20 @@ export function PropTradingDashboard() {
     readStoredFtmoPayouts,
     () => emptyFtmoPayouts,
   );
-  const registryNames = propAccounts.map((account) => account.accountName);
+  const mounted = useHydrated();
+  const visiblePropAccounts = mounted ? propAccounts : emptyPropAccounts;
+  const visibleFtmoPayouts = mounted ? ftmoPayouts : emptyFtmoPayouts;
+  const registryNames = visiblePropAccounts.map((account) => account.accountName);
   const tradeAccountNames = uniqueAccountNames(tradeHistory, "prop-firm");
   const accountNames = registryNames.length ? registryNames : tradeAccountNames;
   const [accountName, setAccountName] = useState("");
   const selectedAccountName = accountName;
   const allPropTrades = tradeHistory.filter((trade) => (trade.accountType ?? "prop-firm") === "prop-firm");
-  const ftmoAccounts = propAccounts.length
-    ? propAccounts
+  const ftmoAccounts = visiblePropAccounts.length
+    ? visiblePropAccounts
     : tradeAccountNames.map((name) => registryAccountFromTrade(name, allPropTrades));
   const selectedRegistryAccount =
-    propAccounts.find((account) => account.accountName === selectedAccountName) ?? null;
+    visiblePropAccounts.find((account) => account.accountName === selectedAccountName) ?? null;
   const trades = useMemo(
     () =>
       tradeHistory.filter(
@@ -421,7 +430,7 @@ export function PropTradingDashboard() {
     buildFtmoAccountMetrics({
       account,
       accountReport,
-      payouts: ftmoPayouts,
+      payouts: visibleFtmoPayouts,
       settings,
       trades: allPropTrades,
     }),
@@ -713,7 +722,21 @@ export function PersonalTradingDashboard() {
     initialReport: initialTradingReport,
     initialTrades: fallbackTradeHistory,
   });
-  const accountNames = uniqueAccountNames(tradeHistory, "broker");
+  const personalAccounts = useSyncExternalStore(
+    subscribeToPersonalTradingAccounts,
+    readStoredPersonalTradingAccounts,
+    () => emptyPersonalTradingAccounts,
+  );
+  const mounted = useHydrated();
+  const visiblePersonalAccounts = mounted ? personalAccounts : emptyPersonalTradingAccounts;
+  const accountNames = Array.from(
+    new Set([
+      ...visiblePersonalAccounts
+        .filter((account) => account.status !== "Archived")
+        .map((account) => account.accountName),
+      ...uniqueAccountNames(tradeHistory, "broker"),
+    ]),
+  ).sort();
   const [accountName, setAccountName] = useState("");
   const trades = useMemo(
     () =>

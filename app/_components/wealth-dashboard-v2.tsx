@@ -29,6 +29,7 @@ import type {
   WealthAsset,
   WealthBrokerAccount,
 } from "@/app/_lib/wealth-types";
+import { useHydrated } from "@/app/_lib/use-hydrated";
 
 const emptyAssets: WealthAsset[] = [];
 const emptyBankAccounts: WealthAccount[] = [];
@@ -447,15 +448,20 @@ export function WealthDashboardV2({
     readStoredWealthSnapshots,
     () => emptySnapshots,
   );
+  const mounted = useHydrated();
+  const visibleAssets = mounted ? assets : emptyAssets;
+  const visibleBankAccounts = mounted ? bankAccounts : emptyBankAccounts;
+  const visibleBrokerAccounts = mounted ? brokerAccounts : emptyBrokerAccounts;
+  const visibleSnapshots = mounted ? snapshots : emptySnapshots;
 
-  const activeBankAccounts = bankAccounts.filter(
+  const activeBankAccounts = visibleBankAccounts.filter(
     (account) => account.status !== "Archived",
   );
-  const activeBrokerAccounts = brokerAccounts.filter(
+  const activeBrokerAccounts = visibleBrokerAccounts.filter(
     (account) => account.status !== "Archived",
   );
   const summary = buildWealthSummaryWithAccounts(
-    assets,
+    visibleAssets,
     activeBankAccounts,
     activeBrokerAccounts,
   );
@@ -468,7 +474,7 @@ export function WealthDashboardV2({
     (sum, account) => sum + account.totalEquity,
     0,
   );
-  const stocksAssets = assets
+  const stocksAssets = visibleAssets
     .filter((asset) => asset.status !== "Archived")
     .filter((asset) => asset.assetClass === "Stocks")
     .reduce((sum, asset) => sum + asset.currentValue, 0);
@@ -514,7 +520,7 @@ export function WealthDashboardV2({
         value: account.totalEquity,
         category: "Broker",
       })),
-      ...assets
+      ...visibleAssets
         .filter((asset) => asset.status !== "Archived")
         .map((asset) => ({
           label: asset.name,
@@ -536,12 +542,14 @@ export function WealthDashboardV2({
       (best, item) => (!best || item.value > best.value ? item : best),
       null,
     );
-  }, [activeBankAccounts, activeBrokerAccounts, assets, tradingAccountEquity, tradingAccountName]);
+  }, [activeBankAccounts, activeBrokerAccounts, visibleAssets, tradingAccountEquity, tradingAccountName]);
   const diversificationScore = calcDiversificationScore(assetAllocation);
-  const snapshotMonth = getMonthKey();
-  const snapshotLabel = getMonthLabel(snapshotMonth);
+  const snapshotMonth = mounted ? getMonthKey() : "1970-01";
+  const snapshotLabel = mounted ? getMonthLabel(snapshotMonth) : "Loading";
 
   useEffect(() => {
+    if (!mounted) return;
+
     upsertWealthSnapshot({
       month: snapshotMonth,
       label: snapshotLabel,
@@ -572,6 +580,7 @@ export function WealthDashboardV2({
     summary.stocks,
     summary.totalNetWorth,
     tradingAccountEquity,
+    mounted,
   ]);
 
   return (
@@ -636,7 +645,7 @@ export function WealthDashboardV2({
         subtitle="Monthly snapshots are stored in localStorage and updated automatically"
         title="Net Worth Trend Chart"
       >
-        <TrendChart snapshots={snapshots} />
+        <TrendChart snapshots={visibleSnapshots} />
       </SectionCard>
     </section>
   );

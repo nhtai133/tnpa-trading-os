@@ -51,14 +51,14 @@ export function buildWealthSummaryWithAccounts(
   const savings = sumByClass(activeAssets, ["Bank Savings"]);
   const brokerCash = sumByClass(activeAssets, ["Broker Cash"]);
   const stocks =
-    sumByClass(activeAssets, ["Stocks"]) +
+    sumByClass(activeAssets, ["Stocks", "ETF", "Mutual Fund"]) +
     activeBrokerAccounts.reduce(
       (sum, account) => sum + account.stockMarketValue + account.fundEtfValue,
       0,
     );
   const crypto = sumByClass(activeAssets, ["Crypto"]);
   const realEstate = sumByClass(activeAssets, ["Real Estate"]);
-  const other = sumByClass(activeAssets, ["Other"]);
+  const other = sumByClass(activeAssets, ["Loan", "Vehicle", "Other"]);
   const bankCash = sumBankBalances(bankAccounts);
   const brokerEquity = activeBrokerAccounts.reduce(
     (sum, account) => sum + account.totalEquity,

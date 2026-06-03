@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from "react";
 import { buildWealthSummaryWithAccounts } from "@/app/_lib/wealth-metrics";
+import { useHydrated } from "@/app/_lib/use-hydrated";
 import {
   readStoredBrokerAccounts,
   subscribeToBrokerAccounts,
@@ -71,6 +72,19 @@ function SummaryCard({
   );
 }
 
+function WealthSummaryPlaceholder() {
+  return (
+    <section className="space-y-6">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        {[0, 1, 2, 3, 4, 5].map((item) => (
+          <section className="h-32 rounded-md border border-white/10 bg-white/[0.03]" key={item} />
+        ))}
+      </div>
+      <section className="h-64 rounded-md border border-white/10 bg-[#0d121c] p-5 shadow-2xl shadow-black/20" />
+    </section>
+  );
+}
+
 export function WealthSummary() {
   const assets = useSyncExternalStore(
     subscribeToWealthAssets,
@@ -87,6 +101,11 @@ export function WealthSummary() {
     readStoredBrokerAccounts,
     () => emptyBrokerAccounts,
   );
+  const mounted = useHydrated();
+
+  if (!mounted) {
+    return <WealthSummaryPlaceholder />;
+  }
 
   const summary = buildWealthSummaryWithAccounts(assets, bankAccounts, brokerAccounts);
   const summaryValues: Record<WealthRowKey, number> = {

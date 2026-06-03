@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { useMemo } from "react";
 import { useTradingDataset } from "../_lib/use-trading-dataset";
 import { buildWealthSummaryWithAccounts } from "../_lib/wealth-metrics";
 import { readStoredBankAccounts } from "../_lib/bank-account-storage";
 import { readStoredBrokerAccounts } from "../_lib/broker-account-storage";
 import { readStoredWealthAssets } from "../_lib/wealth-storage";
+import { useHydrated } from "../_lib/use-hydrated";
 import {
   fallbackEquityCurve,
   fallbackMonthlyPerformance,
@@ -16,28 +17,6 @@ import {
 } from "../_lib/trading-client-data";
 
 type UnknownRecord = Record<string, unknown>;
-
-let hydrated = false;
-const hydrationListeners = new Set<() => void>();
-
-function subscribeHydration(listener: () => void) {
-  hydrationListeners.add(listener);
-  return () => hydrationListeners.delete(listener);
-}
-
-function getHydrationSnapshot() {
-  return hydrated;
-}
-
-function getHydrationServerSnapshot() {
-  return false;
-}
-
-function markHydrated() {
-  if (hydrated) return;
-  hydrated = true;
-  hydrationListeners.forEach((listener) => listener());
-}
 
 function isRecord(value: unknown): value is UnknownRecord {
   return typeof value === "object" && value !== null;
@@ -115,11 +94,7 @@ function ActionCard({
 }
 
 export function HomeDashboard() {
-  const mounted = useSyncExternalStore(subscribeHydration, getHydrationSnapshot, getHydrationServerSnapshot);
-
-  useEffect(() => {
-    markHydrated();
-  }, []);
+  const mounted = useHydrated();
 
   const tradingData = getRecord(
     useTradingDataset({
@@ -140,11 +115,15 @@ export function HomeDashboard() {
   );
 
   const wealthSummary = useMemo(() => {
+    if (!mounted) {
+      return buildWealthSummaryWithAccounts([], [], []);
+    }
+
     const assets = readStoredWealthAssets();
     const bankAccounts = readStoredBankAccounts();
     const brokerAccounts = readStoredBrokerAccounts();
     return buildWealthSummaryWithAccounts(assets, bankAccounts, brokerAccounts);
-  }, []);
+  }, [mounted]);
 
   return (
     <div className="space-y-6">
