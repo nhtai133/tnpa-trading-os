@@ -1,5 +1,5 @@
-import { WealthAssetsModule } from "@/app/_components/wealth-assets-module";
+import { permanentRedirect } from "next/navigation";
 
 export default function PortfolioPage() {
-  return <WealthAssetsModule title="Portfolio" />;
+  permanentRedirect("/");
 }

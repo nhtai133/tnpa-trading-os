@@ -1,5 +1,5 @@
-import { ArchiveHistoryModule } from "@/app/_components/archive-history-module";
+import { permanentRedirect } from "next/navigation";
 
 export default function ArchiveHistoryPage() {
-  return <ArchiveHistoryModule />;
+  permanentRedirect("/");
 }

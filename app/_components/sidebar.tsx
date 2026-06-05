@@ -31,17 +31,6 @@ const personalTradingItems: NavItem[] = [
   { href: "/personal-trading/analytics", label: "Analytics", marker: "TX" },
 ];
 
-const wealthItems: NavItem[] = [
-  { href: "/wealth", label: "Wealth Dashboard", marker: "WD" },
-  { href: "/net-worth", label: "Net Worth", marker: "NW" },
-  { href: "/portfolio", label: "Portfolio", marker: "PF" },
-  { href: "/bank-accounts", label: "Bank Accounts", marker: "BA" },
-  { href: "/savings", label: "Savings", marker: "SV" },
-  { href: "/broker-accounts", label: "Broker Accounts", marker: "BR" },
-  { href: "/real-estate", label: "Real Estate", marker: "RE" },
-  { href: "/archive-history", label: "Archive History", marker: "AH" },
-];
-
 const systemItems: NavItem[] = [{ href: "/settings", label: "Settings", marker: "ST" }];
 
 function SidebarSection({ title, items }: { title: string; items: NavItem[] }) {
@@ -55,8 +44,7 @@ function SidebarSection({ title, items }: { title: string; items: NavItem[] }) {
         {items.map((item) => {
           const isSectionDashboard =
             item.href === "/prop-trading" ||
-            item.href === "/personal-trading" ||
-            item.href === "/wealth";
+            item.href === "/personal-trading";
           const active =
             hydrated &&
             (pathname === item.href ||
@@ -95,15 +83,14 @@ export function Sidebar() {
   return (
     <aside className="flex h-full w-72 flex-col border-r border-white/10 bg-slate-950/95 px-4 py-5 backdrop-blur">
       <Link href="/" className="mb-6 rounded-xl border border-white/10 bg-slate-900/80 px-4 py-4">
-        <div className="text-xs uppercase tracking-[0.32em] text-cyan-300/80">TNPA OS</div>
-        <div className="mt-1 text-lg font-semibold text-white">Trading + Wealth</div>
-        <div className="mt-1 text-sm text-slate-400">Professional journal and portfolio ops</div>
+        <div className="text-xs uppercase tracking-[0.32em] text-cyan-300/80">TNPA</div>
+        <div className="mt-1 text-lg font-semibold text-white">Trading OS</div>
+        <div className="mt-1 text-sm text-slate-400">FTMO + personal trading journal</div>
       </Link>
 
       <div className="flex-1 space-y-6 overflow-y-auto">
         <SidebarSection title="FTMO OS" items={propTradingItems} />
         <SidebarSection title="Personal Trading" items={personalTradingItems} />
-        <SidebarSection title="Wealth" items={wealthItems} />
         <SidebarSection title="System" items={systemItems} />
       </div>
     </aside>

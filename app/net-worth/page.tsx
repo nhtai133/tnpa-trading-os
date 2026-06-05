@@ -1,5 +1,5 @@
-import { NetWorthModule } from "@/app/_components/net-worth-module";
+import { permanentRedirect } from "next/navigation";
 
 export default function NetWorthPage() {
-  return <NetWorthModule />;
+  permanentRedirect("/");
 }

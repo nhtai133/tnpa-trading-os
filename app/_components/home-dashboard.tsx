@@ -2,12 +2,7 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { useMemo } from "react";
 import { useTradingDataset } from "../_lib/use-trading-dataset";
-import { buildWealthSummaryWithAccounts } from "../_lib/wealth-metrics";
-import { readStoredBankAccounts } from "../_lib/bank-account-storage";
-import { readStoredBrokerAccounts } from "../_lib/broker-account-storage";
-import { readStoredWealthAssets } from "../_lib/wealth-storage";
 import { useHydrated } from "../_lib/use-hydrated";
 import {
   fallbackEquityCurve,
@@ -43,20 +38,12 @@ function formatMoney(value: number, currency = "VND") {
   }).format(value);
 }
 
-function SummaryCard({
-  label,
-  value,
-  subvalue,
-}: {
-  label: string;
-  value: string;
-  subvalue?: string;
-}) {
+function KpiCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div className="rounded-lg border border-white/10 bg-slate-900/80 p-4">
       <div className="text-xs uppercase tracking-[0.2em] text-slate-400">{label}</div>
       <div className="mt-2 text-2xl font-semibold text-white">{value}</div>
-      {subvalue ? <div className="mt-2 text-sm text-slate-400">{subvalue}</div> : null}
+      {sub ? <div className="mt-2 text-sm text-slate-400">{sub}</div> : null}
     </div>
   );
 }
@@ -114,46 +101,40 @@ export function HomeDashboard() {
       tradingData["closedNetProfit"],
   );
 
-  const wealthSummary = useMemo(() => {
-    if (!mounted) {
-      return buildWealthSummaryWithAccounts([], [], []);
-    }
-
-    const assets = readStoredWealthAssets();
-    const bankAccounts = readStoredBankAccounts();
-    const brokerAccounts = readStoredBrokerAccounts();
-    return buildWealthSummaryWithAccounts(assets, bankAccounts, brokerAccounts);
-  }, [mounted]);
-
   return (
     <div className="space-y-6">
       <section className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 p-6 shadow-[0_20px_60px_rgba(2,6,23,0.35)]">
         <div className="grid gap-4 xl:grid-cols-[1fr_auto] xl:items-end">
           <div>
-            <div className="text-xs uppercase tracking-[0.3em] text-cyan-300/80">TNPA OS</div>
-            <h1 className="mt-2 text-3xl font-semibold text-white">Choose your workspace</h1>
+            <div className="text-xs uppercase tracking-[0.3em] text-cyan-300/80">TNPA</div>
+            <h1 className="mt-2 text-3xl font-semibold text-white">Trading OS</h1>
             <p className="mt-3 max-w-2xl text-sm text-slate-400">
-              Trading OS and Wealth OS are separated so each area stays focused on its own data, workflow, and reporting.
+              FTMO prop trading, personal trading journal, trade analytics, risk monitoring, and MT5 import.
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <SummaryCard
+          <div>
+            <KpiCard
               label="Trading Net Profit"
               value={mounted ? formatMoney(tradingNetProfit) : "—"}
-              subvalue="Closed trades only"
-            />
-            <SummaryCard
-              label="Total Net Worth"
-              value={mounted ? formatMoney(wealthSummary.totalNetWorth) : "—"}
-              subvalue="Active wealth only"
+              sub="Closed trades only"
             />
           </div>
         </div>
       </section>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <ActionCard title="Trading OS" description="Trading dashboard, trades, analytics, risk monitor, and MT5 import." href="/trading" icon="TRD" />
-        <ActionCard title="Wealth OS" description="Net worth, portfolio, accounts, assets, and archive history." href="/wealth" icon="WTH" />
+        <ActionCard
+          title="FTMO OS"
+          description="Prop trading accounts, challenges, funded accounts, payouts, risk, and MT5 import."
+          href="/prop-trading"
+          icon="FTM"
+        />
+        <ActionCard
+          title="Personal Trading"
+          description="Personal broker accounts, trade journal, performance, withdrawals, and analytics."
+          href="/personal-trading"
+          icon="TRD"
+        />
       </div>
     </div>
   );

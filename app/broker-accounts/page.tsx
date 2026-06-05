@@ -1,5 +1,5 @@
-import { BrokerAccountsModule } from "@/app/_components/broker-accounts-module";
+import { permanentRedirect } from "next/navigation";
 
 export default function BrokerAccountsPage() {
-  return <BrokerAccountsModule />;
+  permanentRedirect("/");
 }

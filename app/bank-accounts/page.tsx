@@ -1,5 +1,5 @@
-import { BankAccountsModule } from "@/app/_components/bank-accounts-module";
+import { permanentRedirect } from "next/navigation";
 
 export default function BankAccountsPage() {
-  return <BankAccountsModule />;
+  permanentRedirect("/");
 }
