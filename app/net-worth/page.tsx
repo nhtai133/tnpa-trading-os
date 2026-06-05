@@ -1,10 +1,5 @@
-import { AppShell } from "@/app/_components/app-shell";
-import { WealthSummary } from "@/app/_components/wealth-summary";
+import { NetWorthModule } from "@/app/_components/net-worth-module";
 
 export default function NetWorthPage() {
-  return (
-    <AppShell eyebrow="Wealth" title="Net Worth">
-      <WealthSummary />
-    </AppShell>
-  );
+  return <NetWorthModule />;
 }

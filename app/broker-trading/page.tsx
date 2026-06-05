@@ -1,5 +1,5 @@
-import { BrokerTradingDashboard } from "@/app/_components/trading-account-dashboards";
+import { permanentRedirect } from "next/navigation";
 
 export default function BrokerTradingPage() {
-  return <BrokerTradingDashboard />;
+  permanentRedirect("/personal-trading");
 }

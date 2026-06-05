@@ -1,5 +1,5 @@
-import { PropFirmDashboard } from "@/app/_components/trading-account-dashboards";
+import { permanentRedirect } from "next/navigation";
 
 export default function PropFirmPage() {
-  return <PropFirmDashboard />;
+  permanentRedirect("/prop-trading");
 }

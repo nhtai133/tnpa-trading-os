@@ -873,7 +873,14 @@ export function PropFundedAccountsModule() {
             );
           })
         ) : (
-          <Section title="FTMO Funded"><EmptyState text="No FTMO funded accounts found. Load demo FTMO accounts from Settings." /></Section>
+          <Section title="FTMO Funded">
+            <EmptyState text="No funded FTMO accounts yet. Create an FTMO account and promote it to Funded from the Accounts screen." />
+            <div className="mt-3">
+              <a href="/prop-trading/accounts" className="inline-flex items-center gap-2 rounded-md border border-cyan-500/30 bg-cyan-500/10 px-4 py-2 text-sm font-medium text-cyan-300 transition hover:bg-cyan-500/20">
+                Go to FTMO Accounts
+              </a>
+            </div>
+          </Section>
         )}
       </div>
     </AppShell>

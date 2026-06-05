@@ -31,12 +31,6 @@ const personalTradingItems: NavItem[] = [
   { href: "/personal-trading/analytics", label: "Analytics", marker: "TX" },
 ];
 
-const sharedTradingItems: NavItem[] = [
-  { href: "/trades", label: "Trades", marker: "TR" },
-  { href: "/risk", label: "Risk Monitor", marker: "RM" },
-  { href: "/import-mt5", label: "Import MT5", marker: "MT" },
-];
-
 const wealthItems: NavItem[] = [
   { href: "/wealth", label: "Wealth Dashboard", marker: "WD" },
   { href: "/net-worth", label: "Net Worth", marker: "NW" },
@@ -109,7 +103,6 @@ export function Sidebar() {
       <div className="flex-1 space-y-6 overflow-y-auto">
         <SidebarSection title="FTMO OS" items={propTradingItems} />
         <SidebarSection title="Personal Trading" items={personalTradingItems} />
-        <SidebarSection title="Shared Trading" items={sharedTradingItems} />
         <SidebarSection title="Wealth" items={wealthItems} />
         <SidebarSection title="System" items={systemItems} />
       </div>

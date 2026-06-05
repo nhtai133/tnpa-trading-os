@@ -139,10 +139,6 @@ export function WealthSummary() {
           label="Real Estate"
           value={formatMoney(summary.realEstate)}
         />
-        <SummaryCard
-          label="Broker Cash"
-          value={formatMoney(summary.brokerCash)}
-        />
       </div>
 
       <section className="rounded-md border border-white/10 bg-[#0d121c] p-5 shadow-2xl shadow-black/20">
