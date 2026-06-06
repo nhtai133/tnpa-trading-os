@@ -70,6 +70,7 @@ const backupStorageKeys = [
   "tnpa.personal-trading-accounts.v1",
   "tnpa.personal-withdrawals.v1",
   "tnpa.trade-account-links.v1",
+  "tnpa.playbook-intelligence.v1",
 ] as const;
 
 const backupStorageEvents: Record<(typeof backupStorageKeys)[number], string> = {
@@ -84,6 +85,7 @@ const backupStorageEvents: Record<(typeof backupStorageKeys)[number], string> = 
   "tnpa.personal-trading-accounts.v1": "tnpa:personal-trading-accounts-updated",
   "tnpa.personal-withdrawals.v1": "tnpa:personal-withdrawals-updated",
   "tnpa.trade-account-links.v1": "tnpa:trade-account-links-updated",
+  "tnpa.playbook-intelligence.v1": "tnpa:playbook-intelligence-updated",
 };
 
 function backupFileName(date = new Date()) {

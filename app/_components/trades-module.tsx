@@ -27,6 +27,28 @@ import {
   type TradeAccountLinks,
   type TradeAccountSource,
 } from "@/app/_lib/trade-account-link-storage";
+import {
+  createEmptyTnpaPlaybookIntelligence,
+  emptyTnpaPlaybookIntelligenceOverrides,
+  evaluateTnpaGrade,
+  readTnpaPlaybookIntelligenceOverrides,
+  subscribeToTnpaPlaybookIntelligenceOverrides,
+  tnpaCorePlaybooks,
+  tnpaEmaStructureOptions,
+  tnpaEntryQualityOptions,
+  tnpaGrades,
+  tnpaHigherTimeframeTrendOptions,
+  tnpaMarketBiasOptions,
+  tnpaRsiConfirmationOptions,
+  tnpaTdSequentialOptions,
+  tnpaVolumeConfirmationOptions,
+  tnpaZoneContextOptions,
+  writeTnpaPlaybookIntelligenceOverride,
+  type TnpaGrade,
+  type TnpaPlaybookIntelligence,
+  type TnpaPlaybookIntelligenceOverrides,
+  type TnpaRuleCompliance,
+} from "@/app/_lib/tnpa-playbook-intelligence-storage";
 import { writePlaybookOverride } from "@/app/_lib/playbook-storage";
 import { writeSetupTagOverride } from "@/app/_lib/setup-tag-storage";
 import { writeTradeJournalOverride } from "@/app/_lib/trade-journal-storage";
@@ -138,6 +160,7 @@ type FilterState = {
   symbol: string;
   setupTag: string;
   playbook: string;
+  tnpaGrade: string;
   result: string;
   direction: string;
 };
@@ -336,6 +359,61 @@ function buildAccountTradeMetrics(
     .sort((a, b) => b.netPnl - a.netPnl);
 }
 
+function gradeTone(grade: TnpaGrade) {
+  if (grade === "A+" || grade === "A") return "bg-emerald-400/10 text-emerald-300";
+  if (grade === "B") return "bg-cyan-400/10 text-cyan-300";
+  if (grade === "C") return "bg-amber-400/10 text-amber-200";
+  return "bg-rose-400/10 text-rose-300";
+}
+
+function gradeSortValue(grade: TnpaGrade) {
+  return { "A+": 5, A: 4, B: 3, C: 2, Invalid: 1 }[grade];
+}
+
+function buildTnpaSummary(
+  trades: Trade[],
+  overrides: TnpaPlaybookIntelligenceOverrides,
+) {
+  const gradeRows = tnpaGrades.map((grade) => {
+    const gradeTrades = trades.filter((trade) => evaluateTnpaGrade(trade, overrides[trade.id]).grade === grade);
+    const closed = closedTradesOnly(gradeTrades);
+    const wins = closed.filter((trade) => trade.result === "Win").length;
+
+    return {
+      grade,
+      netPnl: closed.reduce((sum, trade) => sum + trade.pnl, 0),
+      trades: gradeTrades.length,
+      winRate: closed.length ? (wins / closed.length) * 100 : 0,
+    };
+  });
+  const playbookRows = tnpaCorePlaybooks
+    .map((playbook) => {
+      const playbookTrades = trades.filter((trade) => overrides[trade.id]?.corePlaybook === playbook);
+      return {
+        netPnl: closedTradesOnly(playbookTrades).reduce((sum, trade) => sum + trade.pnl, 0),
+        playbook,
+        trades: playbookTrades.length,
+      };
+    })
+    .filter((row) => row.trades > 0)
+    .sort((a, b) => b.netPnl - a.netPnl);
+  const violatedRules = new Map<string, number>();
+
+  trades.forEach((trade) => {
+    evaluateTnpaGrade(trade, overrides[trade.id]).violatedRules.forEach((rule) => {
+      violatedRules.set(rule, (violatedRules.get(rule) ?? 0) + 1);
+    });
+  });
+
+  const mostViolatedRule = Array.from(violatedRules.entries()).sort((a, b) => b[1] - a[1])[0];
+
+  return {
+    bestPlaybook: playbookRows[0],
+    gradeRows,
+    mostViolatedRule,
+  };
+}
+
 function money(value: number) {
   const sign = value >= 0 ? "+" : "-";
   return `${sign}$${Math.abs(value).toLocaleString()}`;
@@ -383,6 +461,62 @@ function SelectFilter({
           </option>
         ))}
       </select>
+    </label>
+  );
+}
+
+function OptionalSelectField({
+  label,
+  onChange,
+  options,
+  placeholder = "Not reviewed",
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  options: readonly string[];
+  placeholder?: string;
+  value: string;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+        {label}
+      </span>
+      <select
+        className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        <option value="">{placeholder}</option>
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function RuleCheckbox({
+  checked,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  label: string;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex items-center gap-3 rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-sm font-semibold text-slate-200">
+      <input
+        className="size-4 accent-emerald-400"
+        checked={checked}
+        type="checkbox"
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      {label}
     </label>
   );
 }
@@ -488,11 +622,13 @@ function ScreenshotPicker({
 
 function TradeReviewDrawer({
   accountLinkOptions,
+  tnpaPlaybookIntelligence,
   tradeAccountLinks,
   onClose,
   trade,
 }: {
   accountLinkOptions: AccountLinkOption[];
+  tnpaPlaybookIntelligence: TnpaPlaybookIntelligenceOverrides;
   tradeAccountLinks: TradeAccountLinks;
   onClose: () => void;
   trade: Trade;
@@ -516,6 +652,9 @@ function TradeReviewDrawer({
   const [manualDraft, setManualDraft] = useState<ManualTradeInput>(
     manualTradeInputFromTrade(trade),
   );
+  const [tnpaDraft, setTnpaDraft] = useState<TnpaPlaybookIntelligence>(
+    tnpaPlaybookIntelligence[trade.id] ?? createEmptyTnpaPlaybookIntelligence(),
+  );
   const propAccounts = useSyncExternalStore(
     subscribeToPropAccounts,
     readStoredPropAccounts,
@@ -525,6 +664,7 @@ function TradeReviewDrawer({
   const [error, setError] = useState("");
   const selectedAccountLinkOption =
     accountLinkOptions.find((option) => option.value === selectedAccountLinkValue) ?? null;
+  const tnpaGrade = evaluateTnpaGrade(trade, tnpaDraft);
 
   function updateDraft(key: keyof TradeJournal, value: string) {
     setDraft((current) => ({
@@ -537,6 +677,26 @@ function TradeReviewDrawer({
     setManualDraft((current) => ({
       ...current,
       [key]: value,
+    }));
+  }
+
+  function updateTnpaDraft<K extends keyof Omit<TnpaPlaybookIntelligence, "rules">>(
+    key: K,
+    value: TnpaPlaybookIntelligence[K] | "",
+  ) {
+    setTnpaDraft((current) => ({
+      ...current,
+      [key]: value || undefined,
+    }));
+  }
+
+  function updateTnpaRule(key: keyof TnpaRuleCompliance, value: boolean) {
+    setTnpaDraft((current) => ({
+      ...current,
+      rules: {
+        ...current.rules,
+        [key]: value,
+      },
     }));
   }
 
@@ -615,6 +775,7 @@ function TradeReviewDrawer({
     writeSetupTagOverride(trade.id, setupTag);
     writePlaybookOverride(trade.id, playbook);
     writeTradeJournalOverride(trade.id, draft);
+    writeTnpaPlaybookIntelligenceOverride(trade.id, tnpaDraft);
     onClose();
   }
 
@@ -663,6 +824,7 @@ function TradeReviewDrawer({
             ["Net P/L", money(trade.pnl)],
             ["Floating P/L", money(trade.floatingPnl ?? 0)],
             ["Playbook", trade.playbook],
+            ["TNPA Grade", `${tnpaGrade.grade} / ${tnpaGrade.score}`],
             ["Original Setup", trade.setup],
           ].map(([label, value]) => (
             <div className="rounded-md border border-white/10 bg-white/[0.03] p-4" key={label}>
@@ -671,6 +833,101 @@ function TradeReviewDrawer({
             </div>
           ))}
         </div>
+
+        <section className="mt-6 rounded-md border border-white/10 bg-white/[0.03] p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-white">TNPA Playbook Intelligence</h3>
+              <p className="mt-1 text-sm text-slate-500">{tnpaGrade.explanation}</p>
+            </div>
+            <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${gradeTone(tnpaGrade.grade)}`}>
+              {tnpaGrade.grade}
+            </span>
+          </div>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <OptionalSelectField
+              label="TNPA Playbook"
+              options={tnpaCorePlaybooks}
+              value={tnpaDraft.corePlaybook ?? ""}
+              onChange={(value) => updateTnpaDraft("corePlaybook", value as TnpaPlaybookIntelligence["corePlaybook"] | "")}
+            />
+            <OptionalSelectField
+              label="Market Bias"
+              options={tnpaMarketBiasOptions}
+              value={tnpaDraft.marketBias ?? ""}
+              onChange={(value) => updateTnpaDraft("marketBias", value as TnpaPlaybookIntelligence["marketBias"] | "")}
+            />
+            <OptionalSelectField
+              label="Higher Timeframe Trend"
+              options={tnpaHigherTimeframeTrendOptions}
+              value={tnpaDraft.higherTimeframeTrend ?? ""}
+              onChange={(value) => updateTnpaDraft("higherTimeframeTrend", value as TnpaPlaybookIntelligence["higherTimeframeTrend"] | "")}
+            />
+            <OptionalSelectField
+              label="EMA Structure"
+              options={tnpaEmaStructureOptions}
+              value={tnpaDraft.emaStructure ?? ""}
+              onChange={(value) => updateTnpaDraft("emaStructure", value as TnpaPlaybookIntelligence["emaStructure"] | "")}
+            />
+            <OptionalSelectField
+              label="RSI Confirmation"
+              options={tnpaRsiConfirmationOptions}
+              value={tnpaDraft.rsiConfirmation ?? ""}
+              onChange={(value) => updateTnpaDraft("rsiConfirmation", value as TnpaPlaybookIntelligence["rsiConfirmation"] | "")}
+            />
+            <OptionalSelectField
+              label="TD Sequential"
+              options={tnpaTdSequentialOptions}
+              value={tnpaDraft.tdSequentialConfirmation ?? ""}
+              onChange={(value) => updateTnpaDraft("tdSequentialConfirmation", value as TnpaPlaybookIntelligence["tdSequentialConfirmation"] | "")}
+            />
+            <OptionalSelectField
+              label="Volume Confirmation"
+              options={tnpaVolumeConfirmationOptions}
+              value={tnpaDraft.volumeConfirmation ?? ""}
+              onChange={(value) => updateTnpaDraft("volumeConfirmation", value as TnpaPlaybookIntelligence["volumeConfirmation"] | "")}
+            />
+            <OptionalSelectField
+              label="Zone Context"
+              options={tnpaZoneContextOptions}
+              value={tnpaDraft.zoneContext ?? ""}
+              onChange={(value) => updateTnpaDraft("zoneContext", value as TnpaPlaybookIntelligence["zoneContext"] | "")}
+            />
+            <OptionalSelectField
+              label="Entry Quality"
+              options={tnpaEntryQualityOptions}
+              value={tnpaDraft.entryQuality ?? ""}
+              onChange={(value) => updateTnpaDraft("entryQuality", value as TnpaPlaybookIntelligence["entryQuality"] | "")}
+            />
+          </div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            <RuleCheckbox
+              checked={tnpaDraft.rules.tradeWithH4Trend}
+              label="Trade with H4 trend"
+              onChange={(checked) => updateTnpaRule("tradeWithH4Trend", checked)}
+            />
+            <RuleCheckbox
+              checked={tnpaDraft.rules.avoidEma21Ema34Entry}
+              label="Avoid entry between EMA21 and EMA34"
+              onChange={(checked) => updateTnpaRule("avoidEma21Ema34Entry", checked)}
+            />
+            <RuleCheckbox
+              checked={tnpaDraft.rules.rrAtLeastTwo}
+              label="RR >= 1:2"
+              onChange={(checked) => updateTnpaRule("rrAtLeastTwo", checked)}
+            />
+            <RuleCheckbox
+              checked={tnpaDraft.rules.stopLossDefined}
+              label="Stop loss defined"
+              onChange={(checked) => updateTnpaRule("stopLossDefined", checked)}
+            />
+            <RuleCheckbox
+              checked={tnpaDraft.rules.playbookMatched}
+              label="Playbook matched"
+              onChange={(checked) => updateTnpaRule("playbookMatched", checked)}
+            />
+          </div>
+        </section>
 
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
           <label className="block">
@@ -1333,6 +1590,7 @@ export function TradesModule({
     symbol: "",
     setupTag: "",
     playbook: "",
+    tnpaGrade: "",
     result: "",
     direction: "",
   });
@@ -1353,6 +1611,11 @@ export function TradesModule({
     subscribeToTradeAccountLinks,
     readTradeAccountLinks,
     () => ({}),
+  );
+  const tnpaPlaybookIntelligence = useSyncExternalStore(
+    subscribeToTnpaPlaybookIntelligenceOverrides,
+    readTnpaPlaybookIntelligenceOverrides,
+    () => emptyTnpaPlaybookIntelligenceOverrides,
   );
   const registryAccountNames = propAccounts.map((account) => account.accountName);
   const accountLinkOptions = useMemo(
@@ -1409,6 +1672,10 @@ export function TradesModule({
   const strategyTypeOptions = useMemo(() => uniqueValues(scopedTradeHistory, "strategyType"), [scopedTradeHistory]);
   const setupTagOptions = useMemo(() => uniqueValues(scopedTradeHistory, "setupTag"), [scopedTradeHistory]);
   const playbookOptions = useMemo(() => uniqueValues(scopedTradeHistory, "playbook"), [scopedTradeHistory]);
+  const tnpaSummary = useMemo(
+    () => buildTnpaSummary(scopedTradeHistory, tnpaPlaybookIntelligence),
+    [scopedTradeHistory, tnpaPlaybookIntelligence],
+  );
   const accountTradeMetrics = useMemo(
     () => buildAccountTradeMetrics(scopedTradeHistory, tradeAccountLinks, accountLinkOptions),
     [accountLinkOptions, scopedTradeHistory, tradeAccountLinks],
@@ -1440,6 +1707,7 @@ export function TradesModule({
       const link = effectiveTradeLink(trade, tradeAccountLinks, accountLinkOptions);
       const effectiveAccountType = link?.accountType ?? trade.accountType;
       const effectiveAccountName = link?.accountName ?? trade.accountName;
+      const tnpaGrade = evaluateTnpaGrade(trade, tnpaPlaybookIntelligence[trade.id]).grade;
       const matchesQuery =
         !normalizedQuery ||
         [
@@ -1448,6 +1716,7 @@ export function TradesModule({
           trade.setup,
           trade.setupTag,
           trade.playbook,
+          tnpaGrade,
           effectiveAccountType,
           effectiveAccountName,
           trade.strategyType,
@@ -1465,11 +1734,12 @@ export function TradesModule({
         (!filters.symbol || trade.symbol === filters.symbol) &&
         (!filters.setupTag || trade.setupTag === filters.setupTag) &&
         (!filters.playbook || trade.playbook === filters.playbook) &&
+        (!filters.tnpaGrade || tnpaGrade === filters.tnpaGrade) &&
         (!filters.result || trade.result === filters.result) &&
         (!filters.direction || trade.side === filters.direction)
       );
     });
-  }, [accountLinkOptions, filters, query, tabTrades, tradeAccountLinks]);
+  }, [accountLinkOptions, filters, query, tabTrades, tnpaPlaybookIntelligence, tradeAccountLinks]);
 
   const totalPages = Math.max(1, Math.ceil(filteredTrades.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -1545,7 +1815,7 @@ export function TradesModule({
             </button>
           ))}
         </div>
-        <div className="grid gap-4 xl:grid-cols-[1.25fr_repeat(8,minmax(0,1fr))]">
+        <div className="grid gap-4 xl:grid-cols-[1.25fr_repeat(9,minmax(0,1fr))]">
           <label className="block">
             <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
               Search
@@ -1599,6 +1869,12 @@ export function TradesModule({
             onChange={(value) => updateFilter("playbook", value)}
           />
           <SelectFilter
+            label="TNPA Grade"
+            options={[...tnpaGrades]}
+            value={filters.tnpaGrade}
+            onChange={(value) => updateFilter("tnpaGrade", value)}
+          />
+          <SelectFilter
             label="Result"
             options={["Win", "Loss"]}
             value={filters.result}
@@ -1610,6 +1886,48 @@ export function TradesModule({
             value={filters.direction}
             onChange={(value) => updateFilter("direction", value)}
           />
+        </div>
+      </section>
+
+      <section className="mt-6 rounded-md border border-white/10 bg-[#0d121c] p-5 shadow-2xl shadow-black/20">
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-white">TNPA Playbook Intelligence</h2>
+            <p className="mt-1 text-sm text-slate-500">Grade quality, playbook fit, and recurring rule violations.</p>
+          </div>
+          <div className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-sm font-semibold text-slate-200">
+            Best playbook: {tnpaSummary.bestPlaybook ? `${tnpaSummary.bestPlaybook.playbook} ${money(tnpaSummary.bestPlaybook.netPnl)}` : "-"}
+          </div>
+          <div className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-sm font-semibold text-slate-200">
+            Most violated: {tnpaSummary.mostViolatedRule ? `${tnpaSummary.mostViolatedRule[0]} (${tnpaSummary.mostViolatedRule[1]})` : "-"}
+          </div>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          {tnpaSummary.gradeRows
+            .slice()
+            .sort((a, b) => gradeSortValue(b.grade) - gradeSortValue(a.grade))
+            .map((row) => (
+              <div className="rounded-md border border-white/10 bg-white/[0.03] p-4" key={row.grade}>
+                <div className="flex items-center justify-between gap-3">
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${gradeTone(row.grade)}`}>
+                    {row.grade}
+                  </span>
+                  <span className="text-xs uppercase tracking-[0.14em] text-slate-500">{row.trades} trades</span>
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Win Rate</div>
+                    <div className="mt-1 font-semibold text-white">{row.winRate.toFixed(1)}%</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Net P/L</div>
+                    <div className={`mt-1 font-semibold ${row.netPnl >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                      {money(row.netPnl)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
         </div>
       </section>
 
@@ -1684,6 +2002,7 @@ export function TradesModule({
                 symbol: "",
                 setupTag: "",
                 playbook: "",
+                tnpaGrade: "",
                 result: "",
                 direction: "",
               });
@@ -1695,7 +2014,7 @@ export function TradesModule({
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1120px] text-left text-sm">
+          <table className="w-full min-w-[1240px] text-left text-sm">
             <thead className="bg-white/[0.03] text-xs uppercase tracking-[0.16em] text-slate-500">
                 <tr>
                   <th className="px-5 py-4 font-semibold">Trade</th>
@@ -1705,6 +2024,7 @@ export function TradesModule({
                   <th className="px-5 py-4 font-semibold">Symbol</th>
                   <th className="px-5 py-4 font-semibold">Setup Tag</th>
                   <th className="px-5 py-4 font-semibold">Playbook</th>
+                  <th className="px-5 py-4 font-semibold">TNPA Grade</th>
                 <th className="px-5 py-4 font-semibold">Direction</th>
                 <th className="px-5 py-4 font-semibold">Status</th>
                 <th className="px-5 py-4 font-semibold">Session</th>
@@ -1723,6 +2043,7 @@ export function TradesModule({
                 const displayPnl =
                   trade.status === "Open" ? trade.floatingPnl ?? 0 : trade.pnl;
                 const positive = displayPnl >= 0;
+                const tnpaGrade = evaluateTnpaGrade(trade, tnpaPlaybookIntelligence[trade.id]);
 
                 return (
                   <tr
@@ -1800,6 +2121,14 @@ export function TradesModule({
                         ))}
                       </select>
                     </td>
+                    <td className="px-5 py-4">
+                      <div className="flex flex-col gap-1">
+                        <span className={`w-fit rounded-full px-2.5 py-1 text-xs font-semibold ${gradeTone(tnpaGrade.grade)}`}>
+                          {tnpaGrade.grade}
+                        </span>
+                        <span className="text-xs text-slate-500">{tnpaGrade.score}/100</span>
+                      </div>
+                    </td>
                     <td className="px-5 py-4">{trade.side}</td>
                     <td className="px-5 py-4">
                       <span
@@ -1868,6 +2197,7 @@ export function TradesModule({
         <TradeReviewDrawer
           accountLinkOptions={accountLinkOptions}
           key={selectedTrade.id}
+          tnpaPlaybookIntelligence={tnpaPlaybookIntelligence}
           tradeAccountLinks={tradeAccountLinks}
           trade={selectedTrade}
           onClose={() => setSelectedTrade(null)}
