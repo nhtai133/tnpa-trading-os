@@ -1,13 +1,21 @@
 import type { StrategyType } from "@/app/_lib/trading-types";
+import type {
+  LifecycleAccountStatus,
+  LifecycleAccountType,
+} from "@/app/_lib/prop-account-storage";
 
-export type PersonalTradingAccountStatus = "Active" | "Archived";
+export type PersonalTradingAccountStatus = LifecycleAccountStatus;
 
 export type PersonalTradingAccount = {
   id: string;
+  lifecycleType: Extract<LifecycleAccountType, "Personal">;
   accountName: string;
   brokerName: string;
   strategyType: StrategyType;
   initialBalance: number;
+  challengeStartDate: string;
+  challengeEndDate: string;
+  targetProfit: number;
   status: PersonalTradingAccountStatus;
   archivedAt?: string;
   notes?: string;
@@ -29,16 +37,31 @@ function sanitizeAccount(value: unknown): PersonalTradingAccount | null {
     return null;
   }
 
+  const initialBalance =
+    typeof account.initialBalance === "number" && Number.isFinite(account.initialBalance)
+      ? account.initialBalance
+      : 0;
+
   return {
     id: account.id,
+    lifecycleType: "Personal",
     accountName: account.accountName,
     brokerName: account.brokerName,
     strategyType: account.strategyType,
-    initialBalance:
-      typeof account.initialBalance === "number" && Number.isFinite(account.initialBalance)
-        ? account.initialBalance
+    initialBalance,
+    challengeStartDate: typeof account.challengeStartDate === "string" ? account.challengeStartDate : "",
+    challengeEndDate: typeof account.challengeEndDate === "string" ? account.challengeEndDate : "",
+    targetProfit:
+      typeof account.targetProfit === "number" && Number.isFinite(account.targetProfit)
+        ? account.targetProfit
         : 0,
-    status: account.status === "Archived" ? "Archived" : "Active",
+    status:
+      account.status === "Passed" ||
+      account.status === "Failed" ||
+      account.status === "Breached" ||
+      account.status === "Archived"
+        ? account.status
+        : "Active",
     archivedAt: typeof account.archivedAt === "string" ? account.archivedAt : undefined,
     notes: typeof account.notes === "string" ? account.notes : undefined,
   };

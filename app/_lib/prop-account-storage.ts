@@ -5,15 +5,38 @@ import type {
   PropPhase,
 } from "@/app/_lib/trading-types";
 
+export const lifecycleAccountTypes = [
+  "Challenge v1",
+  "Challenge v2",
+  "Verification",
+  "Funded",
+  "Personal",
+] as const;
+export type LifecycleAccountType = (typeof lifecycleAccountTypes)[number];
+
+export const lifecycleAccountStatuses = [
+  "Active",
+  "Passed",
+  "Failed",
+  "Breached",
+  "Archived",
+] as const;
+export type LifecycleAccountStatus = (typeof lifecycleAccountStatuses)[number];
+
 export type PropAccount = {
   id: string;
   firmName: PropFirmName;
   accountName: string;
+  lifecycleType: Exclude<LifecycleAccountType, "Personal">;
   accountSize: number;
   challengeType: ChallengeType;
   phase: PropPhase;
   status: PropAccountStatus;
+  lifecycleStatus: LifecycleAccountStatus;
   startDate: string;
+  challengeStartDate: string;
+  challengeEndDate: string;
+  targetProfit: number;
   minimumTradingDays: number;
   profitTargetPercent: number;
   dailyLossLimitPercent: number;
@@ -52,11 +75,16 @@ export const demoPropAccounts: PropAccount[] = [
     id: demoPropAccountIds[0],
     firmName: "FTMO",
     accountName: "FTMO V1 100K",
+    lifecycleType: "Challenge v1",
     accountSize: 100000,
     challengeType: "FTMO Challenge V1",
     phase: "Phase 1",
     status: "Active",
+    lifecycleStatus: "Active",
     startDate: "",
+    challengeStartDate: "",
+    challengeEndDate: "",
+    targetProfit: 10000,
     minimumTradingDays: 4,
     profitTargetPercent: 10,
     dailyLossLimitPercent: 5,
@@ -66,11 +94,16 @@ export const demoPropAccounts: PropAccount[] = [
     id: demoPropAccountIds[1],
     firmName: "FTMO",
     accountName: "FTMO V1 200K",
+    lifecycleType: "Challenge v1",
     accountSize: 200000,
     challengeType: "FTMO Challenge V1",
     phase: "Phase 1",
     status: "Active",
+    lifecycleStatus: "Active",
     startDate: "",
+    challengeStartDate: "",
+    challengeEndDate: "",
+    targetProfit: 20000,
     minimumTradingDays: 4,
     profitTargetPercent: 10,
     dailyLossLimitPercent: 5,
@@ -80,11 +113,16 @@ export const demoPropAccounts: PropAccount[] = [
     id: demoPropAccountIds[2],
     firmName: "FTMO",
     accountName: "FTMO V2 100K A",
+    lifecycleType: "Challenge v2",
     accountSize: 100000,
     challengeType: "FTMO Challenge V2",
     phase: "Phase 1",
     status: "Active",
+    lifecycleStatus: "Active",
     startDate: "",
+    challengeStartDate: "",
+    challengeEndDate: "",
+    targetProfit: 10000,
     minimumTradingDays: 4,
     profitTargetPercent: 10,
     dailyLossLimitPercent: 5,
@@ -94,11 +132,16 @@ export const demoPropAccounts: PropAccount[] = [
     id: demoPropAccountIds[3],
     firmName: "FTMO",
     accountName: "FTMO V2 100K B",
+    lifecycleType: "Challenge v2",
     accountSize: 100000,
     challengeType: "FTMO Challenge V2",
     phase: "Phase 1",
     status: "Active",
+    lifecycleStatus: "Active",
     startDate: "",
+    challengeStartDate: "",
+    challengeEndDate: "",
+    targetProfit: 10000,
     minimumTradingDays: 4,
     profitTargetPercent: 10,
     dailyLossLimitPercent: 5,
@@ -108,17 +151,115 @@ export const demoPropAccounts: PropAccount[] = [
     id: demoPropAccountIds[4],
     firmName: "FTMO",
     accountName: "FTMO Live 50K",
+    lifecycleType: "Funded",
     accountSize: 50000,
     challengeType: "FTMO Funded",
     phase: "Funded",
-    status: "Funded",
+    status: "Active",
+    lifecycleStatus: "Active",
     startDate: "",
+    challengeStartDate: "",
+    challengeEndDate: "",
+    targetProfit: 5000,
     minimumTradingDays: 0,
     profitTargetPercent: 10,
     dailyLossLimitPercent: 5,
     maxLossLimitPercent: 10,
   },
 ];
+
+function lifecycleTypeFromLegacy(account: Partial<PropAccount> & { lifecycleType?: unknown }): PropAccount["lifecycleType"] {
+  if (
+    account.lifecycleType === "Challenge v1" ||
+    account.lifecycleType === "Challenge v2" ||
+    account.lifecycleType === "Verification" ||
+    account.lifecycleType === "Funded"
+  ) {
+    return account.lifecycleType;
+  }
+
+  if (account.phase === "Funded" || account.challengeType === "FTMO Funded") return "Funded";
+  if (account.phase === "Phase 2") return "Verification";
+  if (account.challengeType === "FTMO Challenge V1") return "Challenge v1";
+  return "Challenge v2";
+}
+
+function lifecycleStatusFromLegacy(status: unknown): LifecycleAccountStatus {
+  if (
+    status === "Active" ||
+    status === "Passed" ||
+    status === "Failed" ||
+    status === "Breached" ||
+    status === "Archived"
+  ) {
+    return status;
+  }
+
+  return "Active";
+}
+
+function tradeStatusFromLegacy(status: unknown): PropAccountStatus {
+  if (status === "Passed" || status === "Failed" || status === "Funded" || status === "Archived") {
+    return status;
+  }
+
+  return "Active";
+}
+
+function sanitizeAccount(value: unknown): PropAccount | null {
+  if (!value || typeof value !== "object") return null;
+
+  const account = value as Partial<PropAccount>;
+  if (!account.id || !account.accountName || !account.firmName) return null;
+
+  const accountSize =
+    typeof account.accountSize === "number" && Number.isFinite(account.accountSize)
+      ? account.accountSize
+      : 100000;
+  const profitTargetPercent =
+    typeof account.profitTargetPercent === "number" && Number.isFinite(account.profitTargetPercent)
+      ? account.profitTargetPercent
+      : 10;
+
+  return {
+    id: account.id,
+    firmName: account.firmName,
+    accountName: account.accountName,
+    lifecycleType: lifecycleTypeFromLegacy(account),
+    accountSize,
+    challengeType: account.challengeType ?? "FTMO Challenge V2",
+    phase: account.phase ?? "Phase 1",
+    status: tradeStatusFromLegacy(account.status),
+    lifecycleStatus: lifecycleStatusFromLegacy(account.lifecycleStatus ?? account.status),
+    startDate: account.startDate ?? account.challengeStartDate ?? "",
+    challengeStartDate: account.challengeStartDate ?? account.startDate ?? "",
+    challengeEndDate: account.challengeEndDate ?? "",
+    targetProfit:
+      typeof account.targetProfit === "number" && Number.isFinite(account.targetProfit)
+        ? account.targetProfit
+        : accountSize * (profitTargetPercent / 100),
+    minimumTradingDays:
+      typeof account.minimumTradingDays === "number" && Number.isFinite(account.minimumTradingDays)
+        ? account.minimumTradingDays
+        : 4,
+    profitTargetPercent,
+    dailyLossLimitPercent:
+      typeof account.dailyLossLimitPercent === "number" && Number.isFinite(account.dailyLossLimitPercent)
+        ? account.dailyLossLimitPercent
+        : 5,
+    maxLossLimitPercent:
+      typeof account.maxLossLimitPercent === "number" && Number.isFinite(account.maxLossLimitPercent)
+        ? account.maxLossLimitPercent
+        : 10,
+  };
+}
+
+function sanitizeAccounts(value: unknown) {
+  if (!Array.isArray(value)) return emptyPropAccounts;
+  return value
+    .map((account) => sanitizeAccount(account))
+    .filter((account): account is PropAccount => Boolean(account));
+}
 
 export function readStoredPropAccounts() {
   if (typeof window === "undefined") return emptyPropAccounts;
@@ -133,7 +274,7 @@ export function readStoredPropAccounts() {
   }
 
   try {
-    lastParsed = JSON.parse(raw) as PropAccount[];
+    lastParsed = sanitizeAccounts(JSON.parse(raw));
   } catch {
     lastParsed = emptyPropAccounts;
   }

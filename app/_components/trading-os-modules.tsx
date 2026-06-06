@@ -6,12 +6,16 @@ import { AppShell } from "@/app/_components/app-shell";
 import {
   emptyPropAccounts,
   emptyFtmoPayouts,
+  lifecycleAccountStatuses,
+  lifecycleAccountTypes,
   readStoredFtmoPayouts,
   readStoredPropAccounts,
   subscribeToFtmoPayouts,
   subscribeToPropAccounts,
   writeFtmoPayouts,
   writePropAccounts,
+  type LifecycleAccountStatus,
+  type LifecycleAccountType,
   type PropAccount,
 } from "@/app/_lib/prop-account-storage";
 import {
@@ -34,7 +38,6 @@ import {
 import type {
   AccountType,
   ChallengeType,
-  PropAccountStatus,
   PropFirmName,
   PropPhase,
   StrategyType,
@@ -43,7 +46,6 @@ import type {
 import {
   brokerAccountNames,
   challengeTypes,
-  propAccountStatuses,
   propFirmNames,
   propPhases,
   strategyTypes,
@@ -82,11 +84,15 @@ type PropAccountDraft = {
   id?: string;
   firmName: PropFirmName;
   accountName: string;
+  lifecycleType: Exclude<LifecycleAccountType, "Personal">;
   accountSize: string;
   challengeType: ChallengeType;
   phase: PropPhase;
-  status: PropAccountStatus;
+  status: LifecycleAccountStatus;
   startDate: string;
+  challengeStartDate: string;
+  challengeEndDate: string;
+  targetProfit: string;
   minimumTradingDays: string;
   profitTargetPercent: string;
   dailyLossLimitPercent: string;
@@ -99,6 +105,10 @@ type PersonalAccountDraft = {
   brokerName: string;
   strategyType: StrategyType;
   initialBalance: string;
+  challengeStartDate: string;
+  challengeEndDate: string;
+  targetProfit: string;
+  status: LifecycleAccountStatus;
   notes: string;
 };
 
@@ -131,16 +141,41 @@ function percent(value: number) {
   return `${value.toFixed(1)}%`;
 }
 
+function lifecycleTypeFromChallengeType(challengeType: ChallengeType): Exclude<LifecycleAccountType, "Personal"> {
+  if (challengeType === "FTMO Challenge V1") return "Challenge v1";
+  if (challengeType === "FTMO Funded") return "Funded";
+  return "Challenge v2";
+}
+
+function phaseFromLifecycleType(lifecycleType: Exclude<LifecycleAccountType, "Personal">): PropPhase {
+  if (lifecycleType === "Funded") return "Funded";
+  if (lifecycleType === "Verification") return "Phase 2";
+  return "Phase 1";
+}
+
+function challengeTypeFromLifecycleType(lifecycleType: Exclude<LifecycleAccountType, "Personal">): ChallengeType {
+  if (lifecycleType === "Challenge v1") return "FTMO Challenge V1";
+  if (lifecycleType === "Funded") return "FTMO Funded";
+  return "FTMO Challenge V2";
+}
+
 function propDraftFromAccount(account?: PropAccount): PropAccountDraft {
+  const lifecycleStatus =
+    account?.lifecycleStatus ?? (account?.status === "Funded" ? "Active" : account?.status) ?? "Active";
+
   return {
     id: account?.id,
     firmName: account?.firmName ?? "FTMO",
     accountName: account?.accountName ?? "",
+    lifecycleType: account?.lifecycleType ?? lifecycleTypeFromChallengeType(account?.challengeType ?? "FTMO Challenge V2"),
     accountSize: account ? String(account.accountSize) : "100000",
     challengeType: account?.challengeType ?? "FTMO Challenge V2",
     phase: account?.phase ?? "Phase 1",
-    status: account?.status ?? "Active",
+    status: lifecycleStatus,
     startDate: account?.startDate ?? "",
+    challengeStartDate: account?.challengeStartDate ?? account?.startDate ?? "",
+    challengeEndDate: account?.challengeEndDate ?? "",
+    targetProfit: account ? String(account.targetProfit) : "10000",
     minimumTradingDays: account ? String(account.minimumTradingDays) : "4",
     profitTargetPercent: account ? String(account.profitTargetPercent) : "10",
     dailyLossLimitPercent: account ? String(account.dailyLossLimitPercent) : "5",
@@ -155,6 +190,10 @@ function personalDraftFromAccount(account?: PersonalTradingAccount): PersonalAcc
     brokerName: account?.brokerName ?? "ICMarkets",
     strategyType: account?.strategyType ?? "Swing",
     initialBalance: account ? String(account.initialBalance) : "",
+    challengeStartDate: account?.challengeStartDate ?? "",
+    challengeEndDate: account?.challengeEndDate ?? "",
+    targetProfit: account ? String(account.targetProfit) : "",
+    status: account?.status ?? "Active",
     notes: account?.notes ?? "",
   };
 }
@@ -228,6 +267,36 @@ function usePersonalAccountRegistry() {
 
 function tradesForPropAccount(trades: Trade[], account: PropAccount) {
   return trades.filter((trade) => trade.accountName === account.accountName);
+}
+
+function buildLifecycleSummary({
+  accountSize,
+  closedPnl,
+  currentDrawdown,
+  dailyPnl,
+  dailyLossLimitPercent,
+  maxLossLimitPercent,
+  targetProfit,
+}: {
+  accountSize: number;
+  closedPnl: number;
+  currentDrawdown: number;
+  dailyPnl: number;
+  dailyLossLimitPercent: number;
+  maxLossLimitPercent: number;
+  targetProfit: number;
+}) {
+  return {
+    remainingTarget: Math.max(0, targetProfit - closedPnl),
+    remainingDailyLoss: Math.max(
+      0,
+      accountSize * (dailyLossLimitPercent / 100) - Math.max(0, -dailyPnl),
+    ),
+    remainingMaxLoss: Math.max(
+      0,
+      accountSize * (maxLossLimitPercent / 100) - Math.max(0, currentDrawdown),
+    ),
+  };
 }
 
 function accountSummaries(trades: Trade[]): AccountSummary[] {
@@ -427,16 +496,17 @@ function PropLifecycleCard({
   const settings = useRiskSettings();
   const accountTrades = tradesForPropAccount(trades, account);
   const risk = buildRiskMetrics({ report: accountReport, settings, trades: accountTrades });
-  const target = account.accountSize * (account.profitTargetPercent / 100);
+  const target = account.targetProfit || account.accountSize * (account.profitTargetPercent / 100);
   const targetProgress = target ? (risk.closedNetProfit / target) * 100 : 0;
-  const dailyLossRemaining = Math.max(
-    0,
-    account.accountSize * (account.dailyLossLimitPercent / 100) - Math.max(0, -risk.dailyPnl),
-  );
-  const maxLossRemaining = Math.max(
-    0,
-    account.accountSize * (account.maxLossLimitPercent / 100) - Math.max(0, risk.currentDrawdown),
-  );
+  const lifecycle = buildLifecycleSummary({
+    accountSize: account.accountSize,
+    closedPnl: risk.closedNetProfit,
+    currentDrawdown: risk.currentDrawdown,
+    dailyPnl: risk.dailyPnl,
+    dailyLossLimitPercent: account.dailyLossLimitPercent,
+    maxLossLimitPercent: account.maxLossLimitPercent,
+    targetProfit: target,
+  });
   const days = tradingDays(accountTrades);
   const dayProgress = account.minimumTradingDays
     ? (days / account.minimumTradingDays) * 100
@@ -448,9 +518,9 @@ function PropLifecycleCard({
       <div className="space-y-4">
         <div className="mt-4 flex flex-wrap gap-2">
           <Badge value={account.firmName} />
-          <Badge value={account.challengeType} tone="cyan" />
+          <Badge value={account.lifecycleType} tone="cyan" />
           <Badge value={account.phase} tone="amber" />
-          <Badge value={account.status} tone={account.status === "Failed" ? "rose" : "emerald"} />
+          <Badge value={account.lifecycleStatus} tone={account.lifecycleStatus === "Failed" || account.lifecycleStatus === "Breached" ? "rose" : "emerald"} />
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
           <div className="rounded-md border border-white/10 bg-white/[0.03] p-3">
@@ -459,11 +529,27 @@ function PropLifecycleCard({
           </div>
           <div className="rounded-md border border-white/10 bg-white/[0.03] p-3">
             <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Daily Loss Remaining</div>
-            <div className="mt-2 font-semibold text-white">{plainMoney(dailyLossRemaining)}</div>
+            <div className="mt-2 font-semibold text-white">{plainMoney(lifecycle.remainingDailyLoss)}</div>
           </div>
           <div className="rounded-md border border-white/10 bg-white/[0.03] p-3">
             <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Max Loss Remaining</div>
-            <div className="mt-2 font-semibold text-white">{plainMoney(maxLossRemaining)}</div>
+            <div className="mt-2 font-semibold text-white">{plainMoney(lifecycle.remainingMaxLoss)}</div>
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-md border border-white/10 bg-white/[0.03] p-3">
+            <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Target Profit</div>
+            <div className="mt-2 font-semibold text-white">{plainMoney(target)}</div>
+          </div>
+          <div className="rounded-md border border-white/10 bg-white/[0.03] p-3">
+            <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Remaining Target</div>
+            <div className="mt-2 font-semibold text-white">{plainMoney(lifecycle.remainingTarget)}</div>
+          </div>
+          <div className="rounded-md border border-white/10 bg-white/[0.03] p-3">
+            <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Challenge Window</div>
+            <div className="mt-2 font-semibold text-white">
+              {account.challengeStartDate || "Open"} / {account.challengeEndDate || "Open"}
+            </div>
           </div>
         </div>
         <div>
@@ -517,7 +603,8 @@ function AnalyticsTable({ rows }: { rows: ReturnType<typeof groupedMetricRows> }
 }
 
 export function PropAccountsModule() {
-  const { trades } = useTradingOsData("prop-firm");
+  const { accountReport, trades } = useTradingOsData("prop-firm");
+  const settings = useRiskSettings();
   const registryAccounts = usePropAccountRegistry();
   const rows = accountSummaries(trades);
   const [isOpen, setIsOpen] = useState(false);
@@ -525,8 +612,33 @@ export function PropAccountsModule() {
   const [error, setError] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const mounted = useHydrated();
-  const activeAccounts = registryAccounts.filter((account) => account.status !== "Archived");
-  const archivedAccounts = registryAccounts.filter((account) => account.status === "Archived");
+  const activeAccounts = registryAccounts.filter((account) => account.lifecycleStatus !== "Archived");
+  const archivedAccounts = registryAccounts.filter((account) => account.lifecycleStatus === "Archived");
+  const passedAccounts = registryAccounts.filter((account) => account.lifecycleStatus === "Passed");
+  const breachedAccounts = registryAccounts.filter((account) => account.lifecycleStatus === "Breached");
+  const activeChallengeAccounts = registryAccounts.filter((account) => account.lifecycleStatus === "Active" && account.lifecycleType !== "Funded");
+  const fundedLifecycleAccounts = registryAccounts.filter((account) => account.lifecycleType === "Funded");
+  const lifecycleSummaries = registryAccounts.map((account) => {
+    const accountTrades = tradesForPropAccount(trades, account);
+    const risk = buildRiskMetrics({ report: accountReport, settings, trades: accountTrades });
+    const targetProfit = account.targetProfit || account.accountSize * (account.profitTargetPercent / 100);
+    return buildLifecycleSummary({
+      accountSize: account.accountSize,
+      closedPnl: risk.closedNetProfit,
+      currentDrawdown: risk.currentDrawdown,
+      dailyPnl: risk.dailyPnl,
+      dailyLossLimitPercent: account.dailyLossLimitPercent,
+      maxLossLimitPercent: account.maxLossLimitPercent,
+      targetProfit,
+    });
+  });
+  const totalTargetProfit = registryAccounts.reduce(
+    (sum, account) => sum + (account.targetProfit || account.accountSize * (account.profitTargetPercent / 100)),
+    0,
+  );
+  const totalRemainingTarget = lifecycleSummaries.reduce((sum, row) => sum + row.remainingTarget, 0);
+  const totalRemainingDailyLoss = lifecycleSummaries.reduce((sum, row) => sum + row.remainingDailyLoss, 0);
+  const totalRemainingMaxLoss = lifecycleSummaries.reduce((sum, row) => sum + row.remainingMaxLoss, 0);
 
   function openCreate() {
     setDraft(propDraftFromAccount());
@@ -547,6 +659,7 @@ export function PropAccountsModule() {
     }
 
     const accountSize = Number(draft.accountSize);
+    const targetProfit = Number(draft.targetProfit);
     const minimumTradingDays = Number(draft.minimumTradingDays);
     const profitTargetPercent = Number(draft.profitTargetPercent);
     const dailyLossLimitPercent = Number(draft.dailyLossLimitPercent);
@@ -554,12 +667,13 @@ export function PropAccountsModule() {
 
     if (
       !Number.isFinite(accountSize) ||
+      !Number.isFinite(targetProfit) ||
       !Number.isFinite(minimumTradingDays) ||
       !Number.isFinite(profitTargetPercent) ||
       !Number.isFinite(dailyLossLimitPercent) ||
       !Number.isFinite(maxLossLimitPercent)
     ) {
-      setError("Account size and rule fields must be numbers.");
+      setError("Account size, target profit, and rule fields must be numbers.");
       return null;
     }
 
@@ -567,11 +681,16 @@ export function PropAccountsModule() {
       id: draft.id ?? `FTMO-${registryAccounts.length + 1}-${draft.accountName.trim().replace(/\s+/g, "-").toUpperCase()}`,
       firmName: draft.firmName,
       accountName: draft.accountName.trim(),
+      lifecycleType: draft.lifecycleType,
       accountSize,
       challengeType: draft.challengeType,
       phase: draft.phase,
-      status: draft.status,
-      startDate: draft.startDate,
+      status: draft.status === "Archived" ? "Archived" : draft.status === "Passed" ? "Passed" : draft.status === "Failed" || draft.status === "Breached" ? "Failed" : "Active",
+      lifecycleStatus: draft.status,
+      startDate: draft.challengeStartDate || draft.startDate,
+      challengeStartDate: draft.challengeStartDate || draft.startDate,
+      challengeEndDate: draft.challengeEndDate,
+      targetProfit,
       minimumTradingDays,
       profitTargetPercent,
       dailyLossLimitPercent,
@@ -598,7 +717,7 @@ export function PropAccountsModule() {
   function archiveAccount(account: PropAccount) {
     writePropAccounts(
       registryAccounts.map((row) =>
-        row.id === account.id ? { ...row, status: "Archived" } : row,
+        row.id === account.id ? { ...row, status: "Archived", lifecycleStatus: "Archived" } : row,
       ),
     );
   }
@@ -624,7 +743,15 @@ export function PropAccountsModule() {
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Registry Accounts" value={`${registryAccounts.length || rows.length}`} />
         <MetricCard label="Active Accounts" value={`${activeAccounts.filter((row) => row.status === "Active").length || rows.filter((row) => row.status === "Active").length}`} />
+        <MetricCard label="Passed Accounts" value={`${passedAccounts.length}`} />
+        <MetricCard label="Breached Accounts" value={`${breachedAccounts.length}`} tone={breachedAccounts.length ? "text-rose-300" : "text-white"} />
         <MetricCard label="Archived Accounts" value={`${archivedAccounts.length}`} />
+        <MetricCard label="Active Challenges" value={`${activeChallengeAccounts.length}`} />
+        <MetricCard label="Funded Accounts" value={`${fundedLifecycleAccounts.length}`} />
+        <MetricCard label="Target Profit" value={plainMoney(totalTargetProfit)} />
+        <MetricCard label="Remaining Target" value={plainMoney(totalRemainingTarget)} />
+        <MetricCard label="Remaining Daily Loss" value={plainMoney(totalRemainingDailyLoss)} />
+        <MetricCard label="Remaining Max Loss" value={plainMoney(totalRemainingMaxLoss)} />
         <MetricCard label="Total FTMO P/L" value={money(netProfit(trades))} tone={netProfit(trades) >= 0 ? "text-emerald-300" : "text-rose-300"} />
         <MetricCard label="Open Positions" value={`${openTrades(trades).length}`} />
       </section>
@@ -647,13 +774,14 @@ export function PropAccountsModule() {
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <div className="font-semibold text-white">{account.accountName}</div>
-                      <div className="mt-1 text-sm text-slate-400">{account.firmName} / {plainMoney(account.accountSize)}</div>
+                      <div className="mt-1 text-sm text-slate-400">{account.firmName} / {account.lifecycleType} / {plainMoney(account.accountSize)}</div>
                     </div>
-                    <Badge value={account.status} tone={account.status === "Failed" ? "rose" : "emerald"} />
+                    <Badge value={account.lifecycleStatus} tone={account.lifecycleStatus === "Failed" || account.lifecycleStatus === "Breached" ? "rose" : "emerald"} />
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2">
-                    <Badge value={account.challengeType} tone="cyan" />
+                    <Badge value={`Target ${plainMoney(account.targetProfit)}`} tone="cyan" />
                     <Badge value={account.phase} tone="amber" />
+                    <Badge value={`${account.challengeStartDate || "Open"} / ${account.challengeEndDate || "Open"}`} />
                   </div>
                   <div className="mt-4 flex gap-2">
                     <button
@@ -663,7 +791,7 @@ export function PropAccountsModule() {
                     >
                       Edit
                     </button>
-                    {account.status !== "Archived" ? (
+                    {account.lifecycleStatus !== "Archived" ? (
                       <button
                         className="rounded-md border border-white/10 px-3 py-2 text-xs font-semibold text-rose-200 transition hover:border-rose-300/40 hover:text-rose-100"
                         onClick={() => archiveAccount(account)}
@@ -729,8 +857,39 @@ export function PropAccountsModule() {
                 <input className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none" value={draft.accountSize} onChange={(event) => setDraft((current) => ({ ...current, accountSize: event.target.value }))} />
               </label>
               <label className="block">
+                <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Account Type</span>
+                <select
+                  className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none"
+                  value={draft.lifecycleType}
+                  onChange={(event) => {
+                    const lifecycleType = event.target.value as Exclude<LifecycleAccountType, "Personal">;
+                    setDraft((current) => ({
+                      ...current,
+                      lifecycleType,
+                      challengeType: challengeTypeFromLifecycleType(lifecycleType),
+                      phase: phaseFromLifecycleType(lifecycleType),
+                    }));
+                  }}
+                >
+                  {lifecycleAccountTypes
+                    .filter((type) => type !== "Personal")
+                    .map((type) => <option key={type} value={type}>{type}</option>)}
+                </select>
+              </label>
+              <label className="block">
                 <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Challenge Type</span>
-                <select className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none" value={draft.challengeType} onChange={(event) => setDraft((current) => ({ ...current, challengeType: event.target.value as ChallengeType }))}>
+                <select
+                  className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none"
+                  value={draft.challengeType}
+                  onChange={(event) => {
+                    const challengeType = event.target.value as ChallengeType;
+                    setDraft((current) => ({
+                      ...current,
+                      challengeType,
+                      lifecycleType: lifecycleTypeFromChallengeType(challengeType),
+                    }));
+                  }}
+                >
                   {challengeTypes.map((type) => <option key={type} value={type}>{type}</option>)}
                 </select>
               </label>
@@ -742,13 +901,21 @@ export function PropAccountsModule() {
               </label>
               <label className="block">
                 <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Status</span>
-                <select className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none" value={draft.status} onChange={(event) => setDraft((current) => ({ ...current, status: event.target.value as PropAccountStatus }))}>
-                  {propAccountStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
+                <select className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none" value={draft.status} onChange={(event) => setDraft((current) => ({ ...current, status: event.target.value as LifecycleAccountStatus }))}>
+                  {lifecycleAccountStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
                 </select>
               </label>
               <label className="block">
-                <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Start Date</span>
-                <input className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none" type="date" value={draft.startDate} onChange={(event) => setDraft((current) => ({ ...current, startDate: event.target.value }))} />
+                <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Challenge Start Date</span>
+                <input className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none" type="date" value={draft.challengeStartDate} onChange={(event) => setDraft((current) => ({ ...current, challengeStartDate: event.target.value, startDate: event.target.value }))} />
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Challenge End Date</span>
+                <input className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none" type="date" value={draft.challengeEndDate} onChange={(event) => setDraft((current) => ({ ...current, challengeEndDate: event.target.value }))} />
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Target Profit</span>
+                <input className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none" value={draft.targetProfit} onChange={(event) => setDraft((current) => ({ ...current, targetProfit: event.target.value }))} />
               </label>
               {[
                 ["Profit Target %", "profitTargetPercent"],
@@ -778,10 +945,11 @@ export function PropAccountsModule() {
 export function PropChallengesModule() {
   const { accountReport, trades } = useTradingOsData("prop-firm");
   const registryAccounts = usePropAccountRegistry();
-  const challengeAccounts = registryAccounts.filter((account) => account.challengeType !== "FTMO Funded" && account.phase !== "Funded");
-  const activeAccounts = challengeAccounts.filter((account) => account.status === "Active");
-  const passedAccounts = challengeAccounts.filter((account) => account.status === "Passed");
-  const failedAccounts = challengeAccounts.filter((account) => account.status === "Failed");
+  const challengeAccounts = registryAccounts.filter((account) => account.lifecycleType !== "Funded");
+  const activeAccounts = challengeAccounts.filter((account) => account.lifecycleStatus === "Active");
+  const passedAccounts = challengeAccounts.filter((account) => account.lifecycleStatus === "Passed");
+  const failedAccounts = challengeAccounts.filter((account) => account.lifecycleStatus === "Failed");
+  const breachedAccounts = challengeAccounts.filter((account) => account.lifecycleStatus === "Breached");
 
   return (
     <AppShell eyebrow="FTMO OS" title="FTMO Challenges">
@@ -789,12 +957,14 @@ export function PropChallengesModule() {
         <MetricCard label="Active Challenges" value={`${activeAccounts.length}`} />
         <MetricCard label="Passed Challenges" value={`${passedAccounts.length}`} />
         <MetricCard label="Failed Challenges" value={`${failedAccounts.length}`} tone={failedAccounts.length ? "text-rose-300" : "text-white"} />
+        <MetricCard label="Breached Challenges" value={`${breachedAccounts.length}`} tone={breachedAccounts.length ? "text-rose-300" : "text-white"} />
         <MetricCard label="Registry Challenges" value={`${challengeAccounts.length}`} />
       </section>
       {[
         ["Active Challenges", activeAccounts],
         ["Passed Challenges", passedAccounts],
         ["Failed Challenges", failedAccounts],
+        ["Breached Challenges", breachedAccounts],
       ].map(([title, accounts]) => (
         <div className="mt-6" key={title as string}>
           <Section title={title as string}>
@@ -817,7 +987,7 @@ export function PropChallengesModule() {
 export function PropFundedAccountsModule() {
   const { accountReport, trades } = useTradingOsData("prop-firm");
   const settings = useRiskSettings();
-  const fundedAccounts = usePropAccountRegistry().filter((account) => account.status === "Funded" || account.phase === "Funded");
+  const fundedAccounts = usePropAccountRegistry().filter((account) => account.lifecycleType === "Funded" || account.phase === "Funded");
   const payouts = useSyncExternalStore(
     subscribeToFtmoPayouts,
     readStoredFtmoPayouts,
@@ -1088,6 +1258,8 @@ export function PersonalAccountsModule() {
   const mounted = useHydrated();
   const activeAccounts = registryAccounts.filter((account) => account.status !== "Archived");
   const archivedAccounts = registryAccounts.filter((account) => account.status === "Archived");
+  const passedAccounts = registryAccounts.filter((account) => account.status === "Passed");
+  const breachedAccounts = registryAccounts.filter((account) => account.status === "Breached");
 
   function openCreate() {
     setDraft(personalDraftFromAccount());
@@ -1113,19 +1285,24 @@ export function PersonalAccountsModule() {
     }
 
     const initialBalance = draft.initialBalance.trim() ? Number(draft.initialBalance) : 0;
-    if (!Number.isFinite(initialBalance)) {
-      setError("Initial Balance must be a number.");
+    const targetProfit = draft.targetProfit.trim() ? Number(draft.targetProfit) : 0;
+    if (!Number.isFinite(initialBalance) || !Number.isFinite(targetProfit)) {
+      setError("Initial Balance and Target Profit must be numbers.");
       return null;
     }
 
     return {
       id: draft.id ?? `PERSONAL-${registryAccounts.length + 1}-${draft.accountName.trim().replace(/\s+/g, "-").toUpperCase()}`,
+      lifecycleType: "Personal",
       accountName: draft.accountName.trim(),
       brokerName: draft.brokerName.trim(),
       strategyType: draft.strategyType,
       initialBalance,
+      challengeStartDate: draft.challengeStartDate,
+      challengeEndDate: draft.challengeEndDate,
+      targetProfit,
       notes: draft.notes.trim() || undefined,
-      status: "Active" as const,
+      status: draft.status,
     } satisfies PersonalTradingAccount;
   }
 
@@ -1145,7 +1322,7 @@ export function PersonalAccountsModule() {
         account.id === draft.id
           ? {
               ...nextAccount,
-              status: before?.status ?? "Active",
+              status: nextAccount.status ?? before?.status ?? "Active",
               archivedAt: before?.archivedAt,
             }
           : account,
@@ -1185,6 +1362,8 @@ export function PersonalAccountsModule() {
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Registry Accounts" value={`${registryAccounts.length || rows.length}`} />
         <MetricCard label="Active Accounts" value={`${activeAccounts.length || rows.length}`} />
+        <MetricCard label="Passed Accounts" value={`${passedAccounts.length}`} />
+        <MetricCard label="Breached Accounts" value={`${breachedAccounts.length}`} tone={breachedAccounts.length ? "text-rose-300" : "text-white"} />
         <MetricCard label="Archived Accounts" value={`${archivedAccounts.length}`} />
         <MetricCard label="Net Profit" value={money(netProfit(trades))} tone={netProfit(trades) >= 0 ? "text-emerald-300" : "text-rose-300"} />
         <MetricCard label="Open Positions" value={`${openTrades(trades).length}`} />
@@ -1209,13 +1388,21 @@ export function PersonalAccountsModule() {
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <div className="font-semibold text-white">{account.accountName}</div>
-                        <div className="mt-1 text-sm text-slate-400">{account.brokerName} / {account.strategyType}</div>
+                        <div className="mt-1 text-sm text-slate-400">{account.lifecycleType} / {account.brokerName} / {account.strategyType}</div>
                       </div>
-                      <Badge value={account.status} tone={account.status === "Archived" ? "amber" : "emerald"} />
+                      <Badge value={account.status} tone={account.status === "Failed" || account.status === "Breached" ? "rose" : account.status === "Archived" ? "amber" : "emerald"} />
                     </div>
                     <div className="mt-4 grid gap-3 sm:grid-cols-2">
                       <MetricCard label="Initial Balance" value={plainMoney(account.initialBalance)} />
                       <MetricCard label="Strategy" value={account.strategyType} />
+                      <MetricCard label="Target Profit" value={plainMoney(account.targetProfit)} />
+                      <MetricCard
+                        label="Remaining Target"
+                        value={plainMoney(Math.max(0, account.targetProfit - netProfit(trades.filter((trade) => trade.accountName === account.accountName))))}
+                      />
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <Badge value={`${account.challengeStartDate || "Open"} / ${account.challengeEndDate || "Open"}`} />
                     </div>
                     {account.notes ? <div className="mt-3 text-sm text-slate-500">{account.notes}</div> : null}
                     <div className="mt-4 flex gap-2">
@@ -1296,6 +1483,28 @@ export function PersonalAccountsModule() {
               <label className="block">
                 <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Initial Balance</span>
                 <input className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none" value={draft.initialBalance} onChange={(event) => setDraft((current) => ({ ...current, initialBalance: event.target.value }))} />
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Account Type</span>
+                <input className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-400 outline-none" readOnly value="Personal" />
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Status</span>
+                <select className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none" value={draft.status} onChange={(event) => setDraft((current) => ({ ...current, status: event.target.value as LifecycleAccountStatus }))}>
+                  {lifecycleAccountStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Challenge Start Date</span>
+                <input className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none" type="date" value={draft.challengeStartDate} onChange={(event) => setDraft((current) => ({ ...current, challengeStartDate: event.target.value }))} />
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Challenge End Date</span>
+                <input className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none" type="date" value={draft.challengeEndDate} onChange={(event) => setDraft((current) => ({ ...current, challengeEndDate: event.target.value }))} />
+              </label>
+              <label className="block">
+                <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Target Profit</span>
+                <input className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none" value={draft.targetProfit} onChange={(event) => setDraft((current) => ({ ...current, targetProfit: event.target.value }))} />
               </label>
               <label className="block">
                 <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Notes</span>

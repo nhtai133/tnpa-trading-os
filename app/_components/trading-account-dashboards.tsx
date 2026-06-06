@@ -105,7 +105,7 @@ function clampScore(value: number) {
 
 function missionForAccount(account: PropAccount, payoutReady: boolean) {
   if (payoutReady) return "Prepare For Payout";
-  if (account.phase === "Funded") return "Protect Funded Account";
+  if (account.lifecycleType === "Funded" || account.phase === "Funded") return "Protect Funded Account";
   if (account.phase === "Phase 2") return "Pass Phase 2";
   return "Pass Phase 1";
 }
@@ -121,7 +121,7 @@ function openPositionCount(trades: Trade[]) {
 }
 
 function statusBadgeTone(status: string) {
-  if (status === "Danger" || status === "At Risk" || status === "Stop Trading Today" || status === "Rule Danger") {
+  if (status === "Danger" || status === "At Risk" || status === "Stop Trading Today" || status === "Rule Danger" || status === "Breached" || status === "Failed") {
     return "border-rose-300/30 bg-rose-400/10 text-rose-200";
   }
 
@@ -133,7 +133,7 @@ function statusBadgeTone(status: string) {
     return "border-cyan-300/30 bg-cyan-400/10 text-cyan-200";
   }
 
-  if (status === "Funded" || status === "Payout Ready") {
+  if (status === "Funded" || status === "Payout Ready" || status === "Passed" || status === "Active") {
     return "border-emerald-300/30 bg-emerald-400/10 text-emerald-200";
   }
 
@@ -173,16 +173,25 @@ function CommandItem({
 
 function registryAccountFromTrade(accountName: string, trades: Trade[]): PropAccount {
   const trade = trades.find((row) => row.accountName === accountName);
+  const status =
+    trade?.propStatus === "Passed" || trade?.propStatus === "Failed" || trade?.propStatus === "Archived"
+      ? trade.propStatus
+      : "Active";
 
   return {
     id: `trade-derived-${accountName}`,
     firmName: "FTMO",
     accountName,
+    lifecycleType: trade?.phase === "Funded" || trade?.challengeType === "FTMO Funded" ? "Funded" : trade?.phase === "Phase 2" ? "Verification" : trade?.challengeType === "FTMO Challenge V1" ? "Challenge v1" : "Challenge v2",
     accountSize: trade?.accountSize ?? 100000,
     challengeType: trade?.challengeType ?? "FTMO Challenge V2",
     phase: trade?.phase ?? "Phase 1",
-    status: trade?.propStatus ?? "Active",
+    status,
+    lifecycleStatus: status,
     startDate: trade?.startDate ?? "",
+    challengeStartDate: trade?.startDate ?? "",
+    challengeEndDate: "",
+    targetProfit: (trade?.accountSize ?? 100000) * ((trade?.profitTargetPercent ?? 10) / 100),
     minimumTradingDays: trade?.minimumTradingDays ?? 4,
     profitTargetPercent: trade?.profitTargetPercent ?? 10,
     dailyLossLimitPercent: trade?.dailyLossLimitPercent ?? 5,
@@ -206,7 +215,7 @@ function buildFtmoAccountMetrics({
   const accountTrades = trades.filter((trade) => trade.accountName === account.accountName);
   const risk = buildRiskMetrics({ report: accountReport, settings, trades: accountTrades });
   const accountProfit = closedNetProfit(accountTrades);
-  const targetAmount = account.accountSize * (account.profitTargetPercent / 100);
+  const targetAmount = account.targetProfit || account.accountSize * (account.profitTargetPercent / 100);
   const targetProgress = targetAmount === 0 ? 0 : (accountProfit / targetAmount) * 100;
   const targetRemaining = Math.max(0, targetAmount - accountProfit);
   const dailyLossRemaining = Math.max(
@@ -225,7 +234,7 @@ function buildFtmoAccountMetrics({
     .reduce((sum, payout) => sum + payout.amount, 0);
   const estimatedNextPayout = Math.max(0, accountProfit - lifetimePayout) * 0.8;
   const payoutReady =
-    account.phase === "Funded" &&
+    (account.lifecycleType === "Funded" || account.phase === "Funded") &&
     estimatedNextPayout > 0 &&
     openPositionCount(accountTrades) === 0 &&
     risk.riskLevel !== "Breach";
@@ -236,7 +245,7 @@ function buildFtmoAccountMetrics({
     profitTargetProgress: targetProgress,
     riskLevel: risk.riskLevel,
   });
-  const targetScore = account.phase === "Funded" ? 75 : Math.min(100, Math.max(0, targetProgress));
+  const targetScore = account.lifecycleType === "Funded" || account.phase === "Funded" ? 75 : Math.min(100, Math.max(0, targetProgress));
   const dailyLossScore = Math.min(100, (dailyLossRemaining / Math.max(1, account.accountSize * (account.dailyLossLimitPercent / 100))) * 100);
   const maxLossScore = Math.min(100, (maxLossRemaining / Math.max(1, account.accountSize * (account.maxLossLimitPercent / 100))) * 100);
   const tradingDaysScore = account.minimumTradingDays === 0 ? 100 : Math.min(100, tradingDaysProgress);
@@ -251,7 +260,7 @@ function buildFtmoAccountMetrics({
   );
   const visualStatus = payoutReady
     ? "Payout Ready"
-    : account.phase === "Funded"
+    : account.lifecycleType === "Funded" || account.phase === "Funded"
       ? "Funded"
       : targetProgress >= 90
         ? "Near Pass"
@@ -281,7 +290,7 @@ function buildFtmoAccountMetrics({
     mission: missionForAccount(account, payoutReady),
     riskBudgetRemaining: Math.min(dailyLossRemaining, maxLossRemaining),
     suggestedDailyProfitPace:
-      account.phase === "Funded" || targetRemaining === 0
+      account.lifecycleType === "Funded" || account.phase === "Funded" || targetRemaining === 0
         ? 0
         : targetRemaining / Math.max(1, account.minimumTradingDays - days),
     visualStatus,
@@ -437,18 +446,18 @@ export function PropTradingDashboard() {
   );
   const healthRanking = [...accountMetrics].sort((a, b) => b.healthScore - a.healthScore);
   const tradableAccounts = accountMetrics.filter(
-    (row) => row.canTradeToday !== "Stop" && row.visualStatus !== "Danger" && row.account.phase !== "Funded",
+    (row) => row.canTradeToday !== "Stop" && row.visualStatus !== "Danger" && row.account.lifecycleType !== "Funded" && row.account.phase !== "Funded",
   );
   const bestAccountToTrade = [...tradableAccounts].sort((a, b) => b.healthScore - a.healthScore)[0] ?? null;
   const accountToAvoid =
     [...accountMetrics].sort((a, b) => a.healthScore - b.healthScore)[0] ?? null;
   const accountNearPassing =
     accountMetrics
-      .filter((row) => row.account.phase !== "Funded")
+      .filter((row) => row.account.lifecycleType !== "Funded" && row.account.phase !== "Funded")
       .sort((a, b) => b.targetProgress - a.targetProgress)[0] ?? null;
   const accountNearPayout =
     accountMetrics
-      .filter((row) => row.account.phase === "Funded")
+      .filter((row) => row.account.lifecycleType === "Funded" || row.account.phase === "Funded")
       .sort((a, b) => b.estimatedNextPayout - a.estimatedNextPayout)[0] ?? null;
   const accountAtRisk =
     accountMetrics
@@ -456,19 +465,19 @@ export function PropTradingDashboard() {
       .sort((a, b) => a.healthScore - b.healthScore)[0] ?? accountToAvoid;
   const isAllAccounts = !selectedAccountName;
   const totalChallengeCapital = ftmoAccounts
-    .filter((account) => account.phase !== "Funded")
+    .filter((account) => account.lifecycleType !== "Funded" && account.phase !== "Funded")
     .reduce((sum, account) => sum + account.accountSize, 0);
   const totalFundedCapital = ftmoAccounts
-    .filter((account) => account.phase === "Funded")
+    .filter((account) => account.lifecycleType === "Funded" || account.phase === "Funded")
     .reduce((sum, account) => sum + account.accountSize, 0);
   const activeChallenges = ftmoAccounts.filter(
-    (account) => account.status === "Active" && account.phase !== "Funded",
+    (account) => account.lifecycleStatus === "Active" && account.lifecycleType !== "Funded" && account.phase !== "Funded",
   ).length;
-  const fundedAccounts = ftmoAccounts.filter((account) => account.phase === "Funded" || account.status === "Funded").length;
+  const fundedAccounts = ftmoAccounts.filter((account) => account.lifecycleType === "Funded" || account.phase === "Funded").length;
   const accountsNearPass = accountMetrics.filter((row) => row.visualStatus === "Near Pass").length;
   const accountsAtRisk = accountMetrics.filter((row) => row.visualStatus === "Warning" || row.visualStatus === "Danger").length;
   const totalProfitTargetRemaining = accountMetrics
-    .filter((row) => row.account.phase !== "Funded")
+    .filter((row) => row.account.lifecycleType !== "Funded" && row.account.phase !== "Funded")
     .reduce((sum, row) => sum + row.targetRemaining, 0);
   const totalLifetimePayout = accountMetrics.reduce((sum, row) => sum + row.lifetimePayout, 0);
   const selected = trades[0];
@@ -479,7 +488,7 @@ export function PropTradingDashboard() {
   const maxLossLimitPercent = selectedRegistryAccount?.maxLossLimitPercent ?? selected?.maxLossLimitPercent ?? 10;
   const minimumTradingDays = selectedRegistryAccount?.minimumTradingDays ?? selected?.minimumTradingDays ?? 4;
   const tradingDays = countTradingDays(trades);
-  const profitTarget = accountSize * (profitTargetPercent / 100);
+  const profitTarget = selectedRegistryAccount?.targetProfit ?? accountSize * (profitTargetPercent / 100);
   const profitTargetProgress = profitTarget === 0 ? 0 : (risk.closedNetProfit / profitTarget) * 100;
   const dailyLossLimit = accountSize * (dailyLossLimitPercent / 100);
   const maxLossLimit = accountSize * (maxLossLimitPercent / 100);
@@ -635,7 +644,7 @@ export function PropTradingDashboard() {
                       <td className="px-5 py-4">{row.account.challengeType}</td>
                       <td className="px-5 py-4">{row.account.phase}</td>
                       <td className="px-5 py-4">
-                        <StatusBadge value={row.account.status} />
+                        <StatusBadge value={row.account.lifecycleStatus} />
                       </td>
                       <td className="px-5 py-4">
                         <div className="min-w-40">
