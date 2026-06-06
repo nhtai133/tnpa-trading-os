@@ -332,6 +332,168 @@ function accountTradeMetricSummary(trades: Trade[]) {
   };
 }
 
+type AccountTimelineEvent = {
+  id: string;
+  label: string;
+  date: string;
+  detail: string;
+  tone?: "emerald" | "amber" | "rose" | "cyan";
+};
+
+type AccountPerformance = {
+  startingBalance: number;
+  currentBalance: number;
+  realizedPnl: number;
+  floatingPnl: number;
+  netPnl: number;
+  tradeCount: number;
+  winRate: number;
+  profitFactor: number;
+  bestTrade?: Trade;
+  worstTrade?: Trade;
+  maxDrawdown: number;
+  dailyPnl: Array<{ date: string; pnl: number }>;
+  equityCurve: Array<{ label: string; balance: number }>;
+};
+
+function parseDateValue(value?: string) {
+  if (!value) return 0;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? 0 : parsed.getTime();
+}
+
+function tradeDateValue(trade: Trade) {
+  return parseDateValue(trade.closeTime) || parseDateValue(trade.openTime) || parseDateValue(trade.date);
+}
+
+function displayDate(value?: string) {
+  if (!value) return "No date";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toISOString().slice(0, 10);
+}
+
+function tradeDisplayDate(trade: Trade) {
+  return displayDate(trade.closeTime || trade.openTime || trade.date);
+}
+
+function buildAccountPerformance(startingBalance: number, trades: Trade[]): AccountPerformance {
+  const closedRows = closedTrades(trades).sort((a, b) => tradeDateValue(a) - tradeDateValue(b));
+  const realizedPnl = netProfit(trades);
+  const openPnl = floatingPnl(trades);
+  const daily = new Map<string, number>();
+  let runningBalance = startingBalance;
+  let peakBalance = startingBalance;
+  let maxDrawdown = 0;
+  const equityCurve = [{ label: "Start", balance: startingBalance }];
+
+  closedRows.forEach((trade) => {
+    runningBalance += trade.pnl;
+    peakBalance = Math.max(peakBalance, runningBalance);
+    maxDrawdown = Math.max(maxDrawdown, peakBalance - runningBalance);
+    const date = tradeDisplayDate(trade);
+    daily.set(date, (daily.get(date) ?? 0) + trade.pnl);
+    equityCurve.push({ label: date, balance: runningBalance });
+  });
+
+  const bestTrade = closedRows.reduce<Trade | undefined>(
+    (best, trade) => (!best || trade.pnl > best.pnl ? trade : best),
+    undefined,
+  );
+  const worstTrade = closedRows.reduce<Trade | undefined>(
+    (worst, trade) => (!worst || trade.pnl < worst.pnl ? trade : worst),
+    undefined,
+  );
+
+  return {
+    startingBalance,
+    currentBalance: startingBalance + realizedPnl,
+    realizedPnl,
+    floatingPnl: openPnl,
+    netPnl: realizedPnl + openPnl,
+    tradeCount: trades.length,
+    winRate: winRate(trades),
+    profitFactor: profitFactor(trades),
+    bestTrade,
+    worstTrade,
+    maxDrawdown,
+    dailyPnl: Array.from(daily.entries())
+      .map(([date, pnl]) => ({ date, pnl }))
+      .sort((a, b) => parseDateValue(b.date) - parseDateValue(a.date)),
+    equityCurve,
+  };
+}
+
+function accountStatusTone(status: LifecycleAccountStatus) {
+  if (status === "Failed" || status === "Breached") return "rose";
+  if (status === "Archived") return "amber";
+  if (status === "Passed") return "cyan";
+  return "emerald";
+}
+
+function lifecycleStatusEvent(status: LifecycleAccountStatus, date: string) {
+  if (status === "Active") return null;
+  return {
+    id: `status-${status}`,
+    label: status,
+    date: date || "No date",
+    detail: `Account marked ${status}`,
+    tone: accountStatusTone(status),
+  } satisfies AccountTimelineEvent;
+}
+
+function buildTradeTimelineEvents(trades: Trade[]) {
+  const performance = buildAccountPerformance(0, trades);
+  const sortedTrades = [...trades].sort((a, b) => tradeDateValue(a) - tradeDateValue(b));
+  const events: AccountTimelineEvent[] = [];
+  const firstTrade = sortedTrades[0];
+
+  if (firstTrade) {
+    events.push({
+      id: `first-trade-${firstTrade.id}`,
+      label: "First trade",
+      date: tradeDisplayDate(firstTrade),
+      detail: `${firstTrade.symbol} ${money(firstTrade.status === "Open" ? firstTrade.floatingPnl ?? 0 : firstTrade.pnl)}`,
+      tone: "cyan",
+    });
+  }
+
+  if (performance.bestTrade) {
+    events.push({
+      id: `best-trade-${performance.bestTrade.id}`,
+      label: "Best trade",
+      date: tradeDisplayDate(performance.bestTrade),
+      detail: `${performance.bestTrade.symbol} ${money(performance.bestTrade.pnl)}`,
+      tone: "emerald",
+    });
+  }
+
+  if (performance.worstTrade) {
+    events.push({
+      id: `worst-trade-${performance.worstTrade.id}`,
+      label: "Worst trade",
+      date: tradeDisplayDate(performance.worstTrade),
+      detail: `${performance.worstTrade.symbol} ${money(performance.worstTrade.pnl)}`,
+      tone: "rose",
+    });
+  }
+
+  return events;
+}
+
+function accountRiskSettings(account: PropAccount, fallback: ReturnType<typeof useRiskSettings>) {
+  return {
+    ...fallback,
+    dailyLossLimitPercent: account.dailyLossLimitPercent,
+    maxLossLimitPercent: account.maxLossLimitPercent,
+    profitTargetPercent: account.profitTargetPercent,
+  };
+}
+
+function sortTimelineEvents(events: AccountTimelineEvent[]) {
+  return [...events].sort((a, b) => parseDateValue(a.date) - parseDateValue(b.date));
+}
+
 function accountSummaries(trades: Trade[]): AccountSummary[] {
   const grouped = new Map<string, Trade[]>();
   trades.forEach((trade) => {
@@ -456,6 +618,19 @@ function ProgressBar({ value }: { value: number }) {
   );
 }
 
+function ComplianceBar({ value }: { value: number }) {
+  const clamped = Math.min(100, Math.max(0, value));
+
+  return (
+    <div className="h-2 rounded-full bg-white/[0.06]">
+      <div
+        className={`h-2 rounded-full ${value >= 100 ? "bg-rose-400" : value >= 70 ? "bg-amber-300" : "bg-emerald-400"}`}
+        style={{ width: `${clamped}%` }}
+      />
+    </div>
+  );
+}
+
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="rounded-md border border-white/10 bg-[#0d121c] p-5 shadow-2xl shadow-black/20">
@@ -467,6 +642,168 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 function EmptyState({ text }: { text: string }) {
   return <div className="rounded-md border border-dashed border-white/10 px-4 py-6 text-sm text-slate-500">{text}</div>;
+}
+
+function AccountEquityCurve({ points }: { points: AccountPerformance["equityCurve"] }) {
+  if (points.length < 2) {
+    return <EmptyState text="No closed trades yet for the equity curve." />;
+  }
+
+  const values = points.map((point) => point.balance);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const width = 420;
+  const height = 120;
+  const path = points
+    .map((point, index) => {
+      const x = points.length === 1 ? 0 : (index / (points.length - 1)) * width;
+      const y = height - ((point.balance - min) / range) * height;
+      return `${index === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
+    })
+    .join(" ");
+
+  return (
+    <div className="rounded-md border border-white/10 bg-[#090d15] p-3">
+      <svg className="h-32 w-full" preserveAspectRatio="none" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Cumulative account balance curve">
+        <path d={path} fill="none" stroke="#34d399" strokeLinecap="round" strokeWidth="3" />
+      </svg>
+      <div className="mt-2 flex justify-between text-xs text-slate-500">
+        <span>{points[0]?.label}</span>
+        <span>{points.at(-1)?.label}</span>
+      </div>
+    </div>
+  );
+}
+
+function AccountTimeline({ events }: { events: AccountTimelineEvent[] }) {
+  if (!events.length) return <EmptyState text="No timeline events yet." />;
+
+  return (
+    <div className="space-y-3">
+      {sortTimelineEvents(events).map((event) => (
+        <div className="grid gap-3 rounded-md border border-white/10 bg-[#090d15] px-3 py-2 text-sm sm:grid-cols-[110px_1fr]" key={event.id}>
+          <div className="text-slate-500">{event.date}</div>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge value={event.label} tone={event.tone ?? "cyan"} />
+              <span className="font-semibold text-slate-200">{event.detail}</span>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DailyPnlRows({ rows }: { rows: AccountPerformance["dailyPnl"] }) {
+  if (!rows.length) return <EmptyState text="No daily P/L yet." />;
+
+  return (
+    <div className="max-h-48 overflow-y-auto rounded-md border border-white/10 bg-[#090d15]">
+      {rows.slice(0, 8).map((row) => (
+        <div className="flex items-center justify-between border-b border-white/5 px-3 py-2 text-sm last:border-0" key={row.date}>
+          <span className="text-slate-400">{row.date}</span>
+          <span className={`font-semibold ${row.pnl >= 0 ? "text-emerald-300" : "text-rose-300"}`}>{money(row.pnl)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AccountPerformancePanel({
+  performance,
+  timelineEvents,
+}: {
+  performance: AccountPerformance;
+  timelineEvents: AccountTimelineEvent[];
+}) {
+  return (
+    <div className="mt-5 rounded-md border border-white/10 bg-[#0d121c] p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold text-white">Performance Timeline</h3>
+        <Badge value={`${performance.tradeCount} linked trades`} tone="cyan" />
+      </div>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard label="Starting Balance" value={plainMoney(performance.startingBalance)} />
+        <MetricCard label="Current Balance" value={plainMoney(performance.currentBalance)} />
+        <MetricCard label="Net P/L" value={money(performance.netPnl)} tone={performance.netPnl >= 0 ? "text-emerald-300" : "text-rose-300"} />
+        <MetricCard label="Max Drawdown" value={plainMoney(performance.maxDrawdown)} tone={performance.maxDrawdown > 0 ? "text-amber-300" : "text-white"} />
+        <MetricCard label="Win Rate" value={percent(performance.winRate)} />
+        <MetricCard label="Profit Factor" value={performance.profitFactor >= 99 ? "No losses" : performance.profitFactor.toFixed(2)} />
+        <MetricCard label="Best Trade" value={performance.bestTrade ? money(performance.bestTrade.pnl) : "$0"} tone="text-emerald-300" />
+        <MetricCard label="Worst Trade" value={performance.worstTrade ? money(performance.worstTrade.pnl) : "$0"} tone={performance.worstTrade && performance.worstTrade.pnl < 0 ? "text-rose-300" : "text-white"} />
+      </div>
+      <div className="mt-4 grid gap-4 xl:grid-cols-2">
+        <div>
+          <div className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Cumulative Equity / Balance Curve</div>
+          <AccountEquityCurve points={performance.equityCurve} />
+        </div>
+        <div>
+          <div className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Daily P/L</div>
+          <DailyPnlRows rows={performance.dailyPnl} />
+        </div>
+      </div>
+      <div className="mt-4">
+        <div className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Account Timeline</div>
+        <AccountTimeline events={timelineEvents} />
+      </div>
+    </div>
+  );
+}
+
+function FtmoRuleComplianceSummary({
+  account,
+  targetProgress,
+  dailyLossUsage,
+  maxLossUsage,
+}: {
+  account: PropAccount;
+  targetProgress: number;
+  dailyLossUsage: number;
+  maxLossUsage: number;
+}) {
+  const status = dailyLossUsage >= 100 || maxLossUsage >= 100
+    ? "Breached"
+    : dailyLossUsage >= 70 || maxLossUsage >= 70
+      ? "Warning"
+      : "Safe";
+  const tone = status === "Breached" ? "rose" : status === "Warning" ? "amber" : "emerald";
+
+  return (
+    <div className="mt-4 rounded-md border border-white/10 bg-[#090d15] p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-white">FTMO Rule Compliance</h3>
+        <Badge value={status} tone={tone} />
+      </div>
+      <div className="mt-4 grid gap-4 lg:grid-cols-3">
+        <div>
+          <div className="mb-2 flex justify-between text-sm text-slate-300">
+            <span>Profit Target</span>
+            <span>{percent(targetProgress)}</span>
+          </div>
+          <ProgressBar value={targetProgress} />
+          <div className="mt-1 text-xs text-slate-500">Target {plainMoney(account.targetProfit || account.accountSize * (account.profitTargetPercent / 100))}</div>
+        </div>
+        <div>
+          <div className="mb-2 flex justify-between text-sm text-slate-300">
+            <span>Daily Loss Usage</span>
+            <span>{percent(dailyLossUsage)}</span>
+          </div>
+          <ComplianceBar value={dailyLossUsage} />
+          <div className="mt-1 text-xs text-slate-500">Limit {percent(account.dailyLossLimitPercent)}</div>
+        </div>
+        <div>
+          <div className="mb-2 flex justify-between text-sm text-slate-300">
+            <span>Max Loss Usage</span>
+            <span>{percent(maxLossUsage)}</span>
+          </div>
+          <ComplianceBar value={maxLossUsage} />
+          <div className="mt-1 text-xs text-slate-500">Limit {percent(account.maxLossLimitPercent)}</div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function HydrationPlaceholder({ eyebrow, title }: { eyebrow: string; title: string }) {
@@ -636,13 +973,18 @@ function AnalyticsTable({ rows }: { rows: ReturnType<typeof groupedMetricRows> }
 }
 
 export function PropAccountsModule() {
-  const { accountReport, trades } = useTradingOsData("prop-firm");
+  const { trades } = useTradingOsData("prop-firm");
   const settings = useRiskSettings();
   const registryAccounts = usePropAccountRegistry();
   const tradeAccountLinks = useSyncExternalStore(
     subscribeToTradeAccountLinks,
     readTradeAccountLinks,
     () => ({}),
+  );
+  const payouts = useSyncExternalStore(
+    subscribeToFtmoPayouts,
+    readStoredFtmoPayouts,
+    () => emptyFtmoPayouts,
   );
   const rows = accountSummaries(trades);
   const [isOpen, setIsOpen] = useState(false);
@@ -658,7 +1000,7 @@ export function PropAccountsModule() {
   const fundedLifecycleAccounts = registryAccounts.filter((account) => account.lifecycleType === "Funded");
   const lifecycleSummaries = registryAccounts.map((account) => {
     const accountTrades = tradesForPropAccount(trades, account, tradeAccountLinks);
-    const risk = buildRiskMetrics({ report: accountReport, settings, trades: accountTrades });
+    const risk = buildRiskMetrics({ report: null, settings: accountRiskSettings(account, settings), trades: accountTrades });
     const targetProfit = account.targetProfit || account.accountSize * (account.profitTargetPercent / 100);
     return buildLifecycleSummary({
       accountSize: account.accountSize,
@@ -810,6 +1152,29 @@ export function PropAccountsModule() {
               {(showArchived ? registryAccounts : activeAccounts).map((account) => {
                 const accountTrades = tradesForPropAccount(trades, account, tradeAccountLinks);
                 const metric = accountTradeMetricSummary(accountTrades);
+                const risk = buildRiskMetrics({ report: null, settings: accountRiskSettings(account, settings), trades: accountTrades });
+                const targetProfit = account.targetProfit || account.accountSize * (account.profitTargetPercent / 100);
+                const performance = buildAccountPerformance(account.accountSize, accountTrades);
+                const accountPayouts = payouts.filter((payout) => payout.accountName === account.accountName);
+                const statusEvent = lifecycleStatusEvent(account.lifecycleStatus, account.challengeEndDate || account.challengeStartDate);
+                const timelineEvents = [
+                  {
+                    id: `created-${account.id}`,
+                    label: "Account created",
+                    date: account.challengeStartDate || account.startDate || "No date",
+                    detail: `${account.lifecycleType} ${plainMoney(account.accountSize)}`,
+                    tone: "cyan",
+                  },
+                  ...buildTradeTimelineEvents(accountTrades),
+                  ...accountPayouts.map((payout) => ({
+                    id: `payout-${payout.id}`,
+                    label: "Payout",
+                    date: payout.date,
+                    detail: `${plainMoney(payout.amount)}${payout.note ? ` / ${payout.note}` : ""}`,
+                    tone: "emerald" as const,
+                  })),
+                  ...(statusEvent ? [statusEvent] : []),
+                ] satisfies AccountTimelineEvent[];
 
                 return (
                   <div className="rounded-md border border-white/10 bg-white/[0.03] p-4" key={account.id}>
@@ -831,6 +1196,13 @@ export function PropAccountsModule() {
                       <MetricCard label="Win Rate" value={percent(metric.winRate)} />
                       <MetricCard label="Profit Factor" value={metric.profitFactor >= 99 ? "No losses" : metric.profitFactor.toFixed(2)} />
                     </div>
+                    <FtmoRuleComplianceSummary
+                      account={account}
+                      dailyLossUsage={risk.dailyLossUsage}
+                      maxLossUsage={risk.maxLossUsage}
+                      targetProgress={targetProfit ? (risk.closedNetProfit / targetProfit) * 100 : 0}
+                    />
+                    <AccountPerformancePanel performance={performance} timelineEvents={timelineEvents} />
                     <div className="mt-4 flex gap-2">
                       <button
                         className="rounded-md border border-white/10 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-emerald-300/40 hover:text-white"
@@ -1305,6 +1677,7 @@ export function PersonalAccountsModule() {
     readTradeAccountLinks,
     () => ({}),
   );
+  const withdrawals = useSyncExternalStore(subscribeWithdrawals, readWithdrawals, () => emptyWithdrawals);
   const [isOpen, setIsOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [draft, setDraft] = useState<PersonalAccountDraft>(() => personalDraftFromAccount());
@@ -1440,6 +1813,27 @@ export function PersonalAccountsModule() {
                 {(showArchived ? registryAccounts : activeAccounts).map((account) => {
                   const accountTrades = tradesForPersonalAccount(trades, account, tradeAccountLinks);
                   const metric = accountTradeMetricSummary(accountTrades);
+                  const performance = buildAccountPerformance(account.initialBalance, accountTrades);
+                  const accountWithdrawals = withdrawals.filter((withdrawal) => withdrawal.accountName === account.accountName);
+                  const statusEvent = lifecycleStatusEvent(account.status, account.archivedAt || account.challengeEndDate || account.challengeStartDate);
+                  const timelineEvents = [
+                    {
+                      id: `created-${account.id}`,
+                      label: "Account created",
+                      date: account.challengeStartDate || "No date",
+                      detail: `${account.brokerName} ${plainMoney(account.initialBalance)}`,
+                      tone: "cyan",
+                    },
+                    ...buildTradeTimelineEvents(accountTrades),
+                    ...accountWithdrawals.map((withdrawal) => ({
+                      id: `withdrawal-${withdrawal.id}`,
+                      label: "Withdrawal",
+                      date: withdrawal.date,
+                      detail: `${plainMoney(withdrawal.amount)}${withdrawal.note ? ` / ${withdrawal.note}` : ""}`,
+                      tone: "amber" as const,
+                    })),
+                    ...(statusEvent ? [statusEvent] : []),
+                  ] satisfies AccountTimelineEvent[];
 
                   return (
                     <div className="rounded-md border border-white/10 bg-white/[0.03] p-4" key={account.id}>
@@ -1467,6 +1861,7 @@ export function PersonalAccountsModule() {
                         <Badge value={`${account.challengeStartDate || "Open"} / ${account.challengeEndDate || "Open"}`} />
                       </div>
                       {account.notes ? <div className="mt-3 text-sm text-slate-500">{account.notes}</div> : null}
+                      <AccountPerformancePanel performance={performance} timelineEvents={timelineEvents} />
                       <div className="mt-4 flex gap-2">
                         <button
                           className="rounded-md border border-white/10 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-emerald-300/40 hover:text-white"
