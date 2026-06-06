@@ -758,7 +758,7 @@ function TradeReviewDrawer({
         return;
       }
 
-      updateManualTrade(trade.id, manualDraft);
+      updateManualTrade(trade.id, manualDraft, { includeAccountMetadata: false });
     }
 
     writeTradeAccountLink(
@@ -2036,6 +2036,13 @@ export function TradesModule({
               </tr>
             </thead>
             <tbody className="divide-y divide-white/10">
+              {!paginatedTrades.length ? (
+                <tr>
+                  <td className="px-5 py-10 text-center text-sm text-slate-500" colSpan={16}>
+                    No trades match the current view.
+                  </td>
+                </tr>
+              ) : null}
               {paginatedTrades.map((trade) => {
                 const link = effectiveTradeLink(trade, tradeAccountLinks, accountLinkOptions);
                 const effectiveAccountName = link?.accountName ?? trade.accountName ?? "Unassigned";

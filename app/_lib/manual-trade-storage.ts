@@ -46,6 +46,7 @@ export const manualTradesUpdatedEvent = "tnpa:manual-trades-updated";
 
 let lastRaw: string | null = null;
 let lastParsed: Trade[] = [];
+let manualTradeIdCounter = 0;
 
 function cleanText(value: unknown) {
   return typeof value === "string" ? value : undefined;
@@ -126,14 +127,36 @@ function sanitizeTrade(value: unknown): Trade | null {
   };
 }
 
+function normalizeDuplicateTradeId(tradeId: string, seenIds: Set<string>) {
+  if (!seenIds.has(tradeId)) {
+    seenIds.add(tradeId);
+    return tradeId;
+  }
+
+  let nextId = `${tradeId}-DUPLICATE`;
+  let index = 2;
+  while (seenIds.has(nextId)) {
+    nextId = `${tradeId}-DUPLICATE-${index}`;
+    index += 1;
+  }
+  seenIds.add(nextId);
+  return nextId;
+}
+
 function sanitizeTrades(value: unknown) {
   if (!Array.isArray(value)) {
     return [];
   }
 
+  const seenIds = new Set<string>();
+
   return value
     .map((trade) => sanitizeTrade(trade))
-    .filter((trade): trade is Trade => Boolean(trade));
+    .filter((trade): trade is Trade => Boolean(trade))
+    .map((trade) => ({
+      ...trade,
+      id: normalizeDuplicateTradeId(trade.id, seenIds),
+    }));
 }
 
 function toTrade(
@@ -245,8 +268,21 @@ export function writeManualTrade(
   input: ManualTradeInput,
   options: { includeAccountMetadata?: boolean } = {},
 ) {
-  const nextTrade = toTrade(input, `MANUAL-${Date.now()}`, options);
-  const next = [nextTrade, ...readManualTrades()];
+  const currentTrades = readManualTrades();
+  const existingIds = new Set(currentTrades.map((trade) => trade.id));
+  let tradeId = "";
+
+  do {
+    manualTradeIdCounter += 1;
+    const entropy =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID().slice(0, 8)
+        : `${manualTradeIdCounter}`;
+    tradeId = `MANUAL-${Date.now()}-${manualTradeIdCounter}-${entropy}`;
+  } while (existingIds.has(tradeId));
+
+  const nextTrade = toTrade(input, tradeId, options);
+  const next = [nextTrade, ...currentTrades];
   const raw = JSON.stringify(next);
   lastRaw = raw;
   lastParsed = next;
@@ -255,9 +291,13 @@ export function writeManualTrade(
   return nextTrade.id;
 }
 
-export function updateManualTrade(tradeId: string, input: ManualTradeInput) {
+export function updateManualTrade(
+  tradeId: string,
+  input: ManualTradeInput,
+  options: { includeAccountMetadata?: boolean } = {},
+) {
   const next = readManualTrades().map((trade) =>
-    trade.id === tradeId ? toTrade(input, tradeId) : trade,
+    trade.id === tradeId ? toTrade(input, tradeId, options) : trade,
   );
   const raw = JSON.stringify(next);
   lastRaw = raw;

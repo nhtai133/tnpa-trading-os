@@ -30,10 +30,17 @@ function sanitizeLink(value: unknown): TradeAccountLink | null {
     return null;
   }
 
+  if (
+    (link.accountSource === "prop" && link.accountType !== "prop-firm") ||
+    (link.accountSource === "personal" && link.accountType !== "broker")
+  ) {
+    return null;
+  }
+
   return {
     accountSource: link.accountSource,
-    accountId: link.accountId,
-    accountName: link.accountName,
+    accountId: link.accountId.trim(),
+    accountName: link.accountName.trim(),
     accountType: link.accountType,
   };
 }
@@ -43,6 +50,7 @@ function sanitizeLinks(value: unknown): TradeAccountLinks {
 
   return Object.fromEntries(
     Object.entries(value)
+      .filter(([tradeId]) => tradeId.trim().length > 0)
       .map(([tradeId, link]) => [tradeId, sanitizeLink(link)] as const)
       .filter((entry): entry is readonly [string, TradeAccountLink] => Boolean(entry[1])),
   );
@@ -72,13 +80,17 @@ export function readTradeAccountLinks() {
 }
 
 export function writeTradeAccountLink(tradeId: string, link: TradeAccountLink | null) {
+  const normalizedTradeId = tradeId.trim();
+  if (!normalizedTradeId) return;
+
   const current = readTradeAccountLinks();
   const next = { ...current };
+  const sanitizedLink = sanitizeLink(link);
 
-  if (link) {
-    next[tradeId] = link;
+  if (sanitizedLink) {
+    next[normalizedTradeId] = sanitizedLink;
   } else {
-    delete next[tradeId];
+    delete next[normalizedTradeId];
   }
 
   const raw = JSON.stringify(next);
