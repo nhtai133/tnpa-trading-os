@@ -6,12 +6,27 @@ import {
   emptyPropAccounts,
   readStoredPropAccounts,
   subscribeToPropAccounts,
+  type PropAccount,
 } from "@/app/_lib/prop-account-storage";
+import {
+  emptyPersonalTradingAccounts,
+  readStoredPersonalTradingAccounts,
+  subscribeToPersonalTradingAccounts,
+  type PersonalTradingAccount,
+} from "@/app/_lib/personal-account-storage";
 import {
   type ManualTradeInput,
   updateManualTrade,
   writeManualTrade,
 } from "@/app/_lib/manual-trade-storage";
+import {
+  readTradeAccountLinks,
+  subscribeToTradeAccountLinks,
+  writeTradeAccountLink,
+  type TradeAccountLink,
+  type TradeAccountLinks,
+  type TradeAccountSource,
+} from "@/app/_lib/trade-account-link-storage";
 import { writePlaybookOverride } from "@/app/_lib/playbook-storage";
 import { writeSetupTagOverride } from "@/app/_lib/setup-tag-storage";
 import { writeTradeJournalOverride } from "@/app/_lib/trade-journal-storage";
@@ -129,6 +144,25 @@ type FilterState = {
 
 type TradeTab = "all" | "mt5" | "manual" | "open";
 
+type AccountLinkOption = TradeAccountLink & {
+  label: string;
+  value: string;
+  strategyType?: StrategyType;
+  propAccount?: PropAccount;
+  personalAccount?: PersonalTradingAccount;
+};
+
+type AccountTradeMetric = {
+  accountId: string;
+  accountName: string;
+  accountSource: TradeAccountSource;
+  accountType: AccountType;
+  netPnl: number;
+  profitFactor: number;
+  tradeCount: number;
+  winRate: number;
+};
+
 function uniqueValues(
   trades: Trade[],
   key: keyof Pick<Trade, "symbol" | "setupTag" | "playbook" | "accountName" | "strategyType" | "accountType">,
@@ -146,6 +180,160 @@ function accountNameOptions(accountType: string, registryAccountNames: string[] 
   }
 
   return [...propFirmAccountNames, ...brokerAccountNames];
+}
+
+function accountLinkValue(source: TradeAccountSource, accountId: string) {
+  return `${source}:${accountId}`;
+}
+
+function buildAccountLinkOptions(
+  propAccounts: PropAccount[],
+  personalAccounts: PersonalTradingAccount[],
+): AccountLinkOption[] {
+  return [
+    ...propAccounts.map<AccountLinkOption>((account) => ({
+      accountId: account.id,
+      accountName: account.accountName,
+      accountSource: "prop",
+      accountType: "prop-firm",
+      label: `FTMO / ${account.accountName}`,
+      propAccount: account,
+      strategyType: "Intraweek",
+      value: accountLinkValue("prop", account.id),
+    })),
+    ...personalAccounts.map<AccountLinkOption>((account) => ({
+      accountId: account.id,
+      accountName: account.accountName,
+      accountSource: "personal",
+      accountType: "broker",
+      label: `Personal / ${account.accountName}`,
+      personalAccount: account,
+      strategyType: account.strategyType,
+      value: accountLinkValue("personal", account.id),
+    })),
+  ];
+}
+
+function findLinkOptionFromTrade(trade: Trade, options: AccountLinkOption[]) {
+  return (
+    options.find(
+      (option) =>
+        option.accountType === (trade.accountType ?? "broker") &&
+        option.accountName === trade.accountName,
+    ) ?? null
+  );
+}
+
+function effectiveTradeLink(
+  trade: Trade,
+  links: TradeAccountLinks,
+  options: AccountLinkOption[],
+) {
+  const stored = links[trade.id];
+  if (stored) return stored;
+
+  const matched = findLinkOptionFromTrade(trade, options);
+  return matched
+    ? {
+        accountId: matched.accountId,
+        accountName: matched.accountName,
+        accountSource: matched.accountSource,
+        accountType: matched.accountType,
+      }
+    : null;
+}
+
+function applyAccountOptionToManualDraft(
+  draft: ManualTradeInput,
+  option: AccountLinkOption,
+): ManualTradeInput {
+  if (option.accountSource === "prop" && option.propAccount) {
+    const account = option.propAccount;
+    return {
+      ...draft,
+      accountType: "prop-firm",
+      accountName: account.accountName,
+      strategyType: "Intraweek",
+      firmName: account.firmName,
+      accountSize: String(account.accountSize),
+      challengeType: account.challengeType,
+      phase: account.phase,
+      profitTargetPercent: String(account.profitTargetPercent),
+      dailyLossLimitPercent: String(account.dailyLossLimitPercent),
+      maxLossLimitPercent: String(account.maxLossLimitPercent),
+      minimumTradingDays: String(account.minimumTradingDays),
+      startDate: account.challengeStartDate || account.startDate,
+      propStatus: account.status,
+    };
+  }
+
+  return {
+    ...draft,
+    accountType: "broker",
+    accountName: option.accountName,
+    strategyType: option.strategyType ?? "Swing",
+  };
+}
+
+function accountOptionSize(option: AccountLinkOption) {
+  if (option.propAccount) return `$${option.propAccount.accountSize.toLocaleString()}`;
+  if (option.personalAccount) return `$${option.personalAccount.initialBalance.toLocaleString()}`;
+  return "-";
+}
+
+function accountOptionStatus(option: AccountLinkOption) {
+  if (option.propAccount) return option.propAccount.lifecycleStatus;
+  if (option.personalAccount) return option.personalAccount.status;
+  return "-";
+}
+
+function closedTradesOnly(trades: Trade[]) {
+  return trades.filter((trade) => trade.status !== "Open");
+}
+
+function profitFactorForTrades(trades: Trade[]) {
+  const closedTrades = closedTradesOnly(trades);
+  const grossProfit = closedTrades
+    .filter((trade) => trade.pnl > 0)
+    .reduce((sum, trade) => sum + trade.pnl, 0);
+  const grossLoss = Math.abs(
+    closedTrades
+      .filter((trade) => trade.pnl < 0)
+      .reduce((sum, trade) => sum + trade.pnl, 0),
+  );
+
+  if (grossLoss === 0) return grossProfit > 0 ? 99 : 0;
+  return grossProfit / grossLoss;
+}
+
+function buildAccountTradeMetrics(
+  trades: Trade[],
+  links: TradeAccountLinks,
+  options: AccountLinkOption[],
+) {
+  return options
+    .map<AccountTradeMetric>((option) => {
+      const accountTrades = trades.filter((trade) => {
+        const link = effectiveTradeLink(trade, links, options);
+        return link?.accountSource === option.accountSource && link.accountId === option.accountId;
+      });
+      const closedTrades = closedTradesOnly(accountTrades);
+      const netPnl = closedTrades.reduce((sum, trade) => sum + trade.pnl, 0);
+      const wins = closedTrades.filter((trade) => trade.result === "Win").length;
+
+      return {
+        accountId: option.accountId,
+        accountName: option.accountName,
+        accountSource: option.accountSource,
+        accountType: option.accountType,
+        netPnl,
+        profitFactor: profitFactorForTrades(accountTrades),
+        tradeCount: accountTrades.length,
+        winRate: closedTrades.length ? (wins / closedTrades.length) * 100 : 0,
+      };
+    })
+    .filter((metric) => metric.tradeCount > 0)
+    .sort((a, b) => b.netPnl - a.netPnl);
 }
 
 function money(value: number) {
@@ -299,15 +487,23 @@ function ScreenshotPicker({
 }
 
 function TradeReviewDrawer({
+  accountLinkOptions,
+  tradeAccountLinks,
   onClose,
   trade,
 }: {
+  accountLinkOptions: AccountLinkOption[];
+  tradeAccountLinks: TradeAccountLinks;
   onClose: () => void;
   trade: Trade;
 }) {
   const isManual = String(trade.source ?? "mt5") === "manual";
+  const existingLink = effectiveTradeLink(trade, tradeAccountLinks, accountLinkOptions);
   const [setupTag, setSetupTag] = useState<SetupTag>(trade.setupTag);
   const [playbook, setPlaybook] = useState<Playbook>(trade.playbook);
+  const [selectedAccountLinkValue, setSelectedAccountLinkValue] = useState(
+    existingLink ? accountLinkValue(existingLink.accountSource, existingLink.accountId) : "",
+  );
   const [draft, setDraft] = useState<TradeJournal>({
     entryScreenshot: trade.entryScreenshot,
     exitScreenshot: trade.exitScreenshot,
@@ -327,6 +523,8 @@ function TradeReviewDrawer({
   );
   const registryAccountNames = propAccounts.map((account) => account.accountName);
   const [error, setError] = useState("");
+  const selectedAccountLinkOption =
+    accountLinkOptions.find((option) => option.value === selectedAccountLinkValue) ?? null;
 
   function updateDraft(key: keyof TradeJournal, value: string) {
     setDraft((current) => ({
@@ -403,6 +601,17 @@ function TradeReviewDrawer({
       updateManualTrade(trade.id, manualDraft);
     }
 
+    writeTradeAccountLink(
+      trade.id,
+      selectedAccountLinkOption
+        ? {
+            accountId: selectedAccountLinkOption.accountId,
+            accountName: selectedAccountLinkOption.accountName,
+            accountSource: selectedAccountLinkOption.accountSource,
+            accountType: selectedAccountLinkOption.accountType,
+          }
+        : null,
+    );
     writeSetupTagOverride(trade.id, setupTag);
     writePlaybookOverride(trade.id, playbook);
     writeTradeJournalOverride(trade.id, draft);
@@ -461,6 +670,43 @@ function TradeReviewDrawer({
               <div className="mt-2 text-sm font-semibold text-slate-100">{value}</div>
             </div>
           ))}
+        </div>
+
+        <div className="mt-6 grid gap-4 sm:grid-cols-2">
+          <label className="block">
+            <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+              Linked Account
+            </span>
+            <select
+              className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition focus:border-emerald-300/50"
+              value={selectedAccountLinkValue}
+              onChange={(event) => {
+                const value = event.target.value;
+                const option = accountLinkOptions.find((item) => item.value === value) ?? null;
+                setSelectedAccountLinkValue(value);
+                if (isManual && option) {
+                  setManualDraft((current) => applyAccountOptionToManualDraft(current, option));
+                }
+              }}
+            >
+              <option value="">Unlinked</option>
+              {accountLinkOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="rounded-md border border-white/10 bg-white/[0.03] p-4">
+            <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Account Source</div>
+            <div className="mt-2 text-sm font-semibold text-slate-100">
+              {selectedAccountLinkOption
+                ? selectedAccountLinkOption.accountSource === "prop"
+                  ? "FTMO Account"
+                  : "Personal Trading Account"
+                : "Unlinked"}
+            </div>
+          </div>
         </div>
 
         {isManual ? (
@@ -740,27 +986,50 @@ function manualTradeDefaults(accountType: AccountType = "broker", accountName?: 
 }
 
 function CreateTradeDrawer({
+  accountLinkOptions,
   defaultAccountType = "broker",
   defaultAccountName,
+  lockedAccountLinkValue,
   onClose,
 }: {
+  accountLinkOptions: AccountLinkOption[];
   defaultAccountName?: string;
   defaultAccountType?: AccountType;
+  lockedAccountLinkValue?: string;
   onClose: () => void;
 }) {
+  const defaultAccountOption =
+    accountLinkOptions.find((option) => option.value === lockedAccountLinkValue) ??
+    accountLinkOptions.find(
+      (option) =>
+        option.accountType === defaultAccountType &&
+        (!defaultAccountName || option.accountName === defaultAccountName),
+    ) ??
+    null;
   const [draft, setDraft] = useState<ManualTradeInput>(
-    manualTradeDefaults(defaultAccountType, defaultAccountName),
+    defaultAccountOption
+      ? applyAccountOptionToManualDraft(
+          manualTradeDefaults(defaultAccountOption.accountType, defaultAccountOption.accountName),
+          defaultAccountOption,
+        )
+      : manualTradeDefaults(defaultAccountType, defaultAccountName),
   );
-  const propAccounts = useSyncExternalStore(
-    subscribeToPropAccounts,
-    readStoredPropAccounts,
-    () => emptyPropAccounts,
-  );
-  const registryAccountNames = propAccounts.map((account) => account.accountName);
+  const [selectedAccountLinkValue, setSelectedAccountLinkValue] = useState(defaultAccountOption?.value ?? "");
   const [error, setError] = useState("");
+  const selectedAccountOption =
+    accountLinkOptions.find((option) => option.value === selectedAccountLinkValue) ?? null;
+  const lockedAccount = Boolean(lockedAccountLinkValue);
 
   function updateDraft(key: keyof ManualTradeInput, value: string) {
     setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  function selectAccount(value: string) {
+    const option = accountLinkOptions.find((item) => item.value === value) ?? null;
+    setSelectedAccountLinkValue(value);
+    if (option) {
+      setDraft((current) => applyAccountOptionToManualDraft(current, option));
+    }
   }
 
   function saveTrade() {
@@ -774,24 +1043,8 @@ function CreateTradeDrawer({
       return;
     }
 
-    if (!draft.accountType || !draft.accountName || !draft.strategyType) {
-      setError("Account Type, Account Name, and Strategy Type are required.");
-      return;
-    }
-
-    if (
-      draft.accountType === "prop-firm" &&
-      (!draft.firmName ||
-        !draft.challengeType ||
-        !draft.phase ||
-        !draft.accountSize.trim() ||
-        !draft.profitTargetPercent.trim() ||
-        !draft.dailyLossLimitPercent.trim() ||
-        !draft.maxLossLimitPercent.trim() ||
-        !draft.minimumTradingDays.trim() ||
-        !draft.propStatus)
-    ) {
-      setError("Prop firm challenge metadata is required.");
+    if (!selectedAccountOption) {
+      setError("Linked Account is required.");
       return;
     }
 
@@ -823,7 +1076,13 @@ function CreateTradeDrawer({
       return;
     }
 
-    writeManualTrade(draft);
+    const tradeId = writeManualTrade(draft, { includeAccountMetadata: false });
+    writeTradeAccountLink(tradeId, {
+      accountId: selectedAccountOption.accountId,
+      accountName: selectedAccountOption.accountName,
+      accountSource: selectedAccountOption.accountSource,
+      accountType: selectedAccountOption.accountType,
+    });
     onClose();
   }
 
@@ -859,103 +1118,69 @@ function CreateTradeDrawer({
           </div>
         ) : null}
 
+        <section className="mt-6 rounded-md border border-white/10 bg-white/[0.03] p-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block">
+              <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
+                Linked Account
+              </span>
+              <select
+                className="h-11 w-full rounded-md border border-white/10 bg-[#090d15] px-3 text-sm text-slate-200 outline-none transition disabled:cursor-not-allowed disabled:opacity-70 focus:border-emerald-300/50"
+                disabled={lockedAccount}
+                value={selectedAccountLinkValue}
+                onChange={(event) => selectAccount(event.target.value)}
+              >
+                <option value="">Select account</option>
+                {accountLinkOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Account Name</div>
+                <div className="mt-1 text-sm font-semibold text-white">{selectedAccountOption?.accountName ?? "-"}</div>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Source</div>
+                <div className="mt-1 text-sm font-semibold text-white">
+                  {selectedAccountOption
+                    ? selectedAccountOption.accountSource === "prop"
+                      ? "FTMO"
+                      : "Personal"
+                    : "-"}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Type</div>
+                <div className="mt-1 text-sm font-semibold text-white">
+                  {selectedAccountOption ? optionLabel(selectedAccountOption.accountType) : "-"}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Size</div>
+                <div className="mt-1 text-sm font-semibold text-white">
+                  {selectedAccountOption ? accountOptionSize(selectedAccountOption) : "-"}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Status</div>
+                <div className="mt-1 text-sm font-semibold text-white">
+                  {selectedAccountOption ? accountOptionStatus(selectedAccountOption) : "-"}
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
         <div className="mt-6 grid gap-4 sm:grid-cols-2">
           <TextInputField
             label="Symbol"
             value={draft.symbol}
             onChange={(value) => updateDraft("symbol", value)}
           />
-          <SelectFilter
-            label="Account Type"
-            options={[...accountTypes]}
-            value={draft.accountType}
-            onChange={(value) => {
-              updateDraft("accountType", value as AccountType);
-              updateDraft(
-                "accountName",
-                value === "prop-firm" ? registryAccountNames[0] ?? "FTMO" : "ICMarkets",
-              );
-              updateDraft("strategyType", value === "prop-firm" ? "Intraweek" : "Swing");
-            }}
-            includeAll={false}
-          />
-          <SelectFilter
-            label="Account Name"
-            options={accountNameOptions(draft.accountType, registryAccountNames)}
-            value={draft.accountName}
-            onChange={(value) => updateDraft("accountName", value)}
-            includeAll={false}
-          />
-          <SelectFilter
-            label="Strategy Type"
-            options={[...strategyTypes]}
-            value={draft.strategyType}
-            onChange={(value) => updateDraft("strategyType", value as StrategyType)}
-            includeAll={false}
-          />
-          {draft.accountType === "prop-firm" ? (
-            <>
-              <SelectFilter
-                label="Firm Name"
-                options={[...propFirmNames]}
-                value={draft.firmName}
-                onChange={(value) => updateDraft("firmName", value as PropFirmName)}
-                includeAll={false}
-              />
-              <TextInputField
-                label="Account Size"
-                value={draft.accountSize}
-                onChange={(value) => updateDraft("accountSize", value)}
-              />
-              <SelectFilter
-                label="Challenge Type"
-                options={[...challengeTypes]}
-                value={draft.challengeType}
-                onChange={(value) => updateDraft("challengeType", value as ChallengeType)}
-                includeAll={false}
-              />
-              <SelectFilter
-                label="Phase"
-                options={[...propPhases]}
-                value={draft.phase}
-                onChange={(value) => updateDraft("phase", value as PropPhase)}
-                includeAll={false}
-              />
-              <TextInputField
-                label="Profit Target %"
-                value={draft.profitTargetPercent}
-                onChange={(value) => updateDraft("profitTargetPercent", value)}
-              />
-              <TextInputField
-                label="Daily Loss Limit %"
-                value={draft.dailyLossLimitPercent}
-                onChange={(value) => updateDraft("dailyLossLimitPercent", value)}
-              />
-              <TextInputField
-                label="Max Loss Limit %"
-                value={draft.maxLossLimitPercent}
-                onChange={(value) => updateDraft("maxLossLimitPercent", value)}
-              />
-              <TextInputField
-                label="Minimum Trading Days"
-                value={draft.minimumTradingDays}
-                onChange={(value) => updateDraft("minimumTradingDays", value)}
-              />
-              <TextInputField
-                label="Start Date"
-                type="date"
-                value={draft.startDate}
-                onChange={(value) => updateDraft("startDate", value)}
-              />
-              <SelectFilter
-                label="Status"
-                options={[...propAccountStatuses]}
-                value={draft.propStatus}
-                onChange={(value) => updateDraft("propStatus", value as PropAccountStatus)}
-                includeAll={false}
-              />
-            </>
-          ) : null}
           <SelectFilter
             label="Trade Status"
             options={["Open", "Closed"]}
@@ -1119,26 +1344,75 @@ export function TradesModule({
     readStoredPropAccounts,
     () => emptyPropAccounts,
   );
+  const personalAccounts = useSyncExternalStore(
+    subscribeToPersonalTradingAccounts,
+    readStoredPersonalTradingAccounts,
+    () => emptyPersonalTradingAccounts,
+  );
+  const tradeAccountLinks = useSyncExternalStore(
+    subscribeToTradeAccountLinks,
+    readTradeAccountLinks,
+    () => ({}),
+  );
   const registryAccountNames = propAccounts.map((account) => account.accountName);
+  const accountLinkOptions = useMemo(
+    () => buildAccountLinkOptions(propAccounts, personalAccounts),
+    [personalAccounts, propAccounts],
+  );
   const [selectedRegistryAccountName, setSelectedRegistryAccountName] = useState("");
   const activeRegistryAccountName =
     scopeAccountType === "prop-firm"
       ? selectedRegistryAccountName || registryAccountNames[0] || ""
       : "";
+  const lockedCreateAccountLinkValue = scopeAccountType
+    ? accountLinkOptions.find(
+        (option) =>
+          option.accountType === scopeAccountType &&
+          (!activeRegistryAccountName || option.accountName === activeRegistryAccountName),
+      )?.value
+    : undefined;
 
   const scopedTradeHistory = scopeAccountType
-    ? tradeHistory.filter(
-        (trade) =>
-          trade.accountType === scopeAccountType &&
-          (!activeRegistryAccountName || trade.accountName === activeRegistryAccountName),
-      )
+    ? tradeHistory.filter((trade) => {
+        const link = effectiveTradeLink(trade, tradeAccountLinks, accountLinkOptions);
+        const effectiveAccountType = link?.accountType ?? trade.accountType;
+        const effectiveAccountName = link?.accountName ?? trade.accountName;
+        return (
+          effectiveAccountType === scopeAccountType &&
+          (!activeRegistryAccountName || effectiveAccountName === activeRegistryAccountName)
+        );
+      })
     : tradeHistory;
   const symbols = useMemo(() => uniqueValues(scopedTradeHistory, "symbol"), [scopedTradeHistory]);
-  const accountTypeOptions = useMemo(() => uniqueValues(scopedTradeHistory, "accountType"), [scopedTradeHistory]);
-  const accountNameFilterOptions = useMemo(() => uniqueValues(scopedTradeHistory, "accountName"), [scopedTradeHistory]);
+  const accountTypeOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          scopedTradeHistory
+            .map((trade) => effectiveTradeLink(trade, tradeAccountLinks, accountLinkOptions)?.accountType ?? trade.accountType)
+            .filter(Boolean),
+        ),
+      ).sort() as string[],
+    [accountLinkOptions, scopedTradeHistory, tradeAccountLinks],
+  );
+  const accountNameFilterOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          scopedTradeHistory
+            .map((trade) => effectiveTradeLink(trade, tradeAccountLinks, accountLinkOptions)?.accountName ?? trade.accountName)
+            .filter(Boolean),
+        ),
+      ).sort() as string[],
+    [accountLinkOptions, scopedTradeHistory, tradeAccountLinks],
+  );
   const strategyTypeOptions = useMemo(() => uniqueValues(scopedTradeHistory, "strategyType"), [scopedTradeHistory]);
   const setupTagOptions = useMemo(() => uniqueValues(scopedTradeHistory, "setupTag"), [scopedTradeHistory]);
   const playbookOptions = useMemo(() => uniqueValues(scopedTradeHistory, "playbook"), [scopedTradeHistory]);
+  const accountTradeMetrics = useMemo(
+    () => buildAccountTradeMetrics(scopedTradeHistory, tradeAccountLinks, accountLinkOptions),
+    [accountLinkOptions, scopedTradeHistory, tradeAccountLinks],
+  );
 
   const tabTrades = useMemo(() => {
     return scopedTradeHistory.filter((trade) => {
@@ -1163,6 +1437,9 @@ export function TradesModule({
     const normalizedQuery = query.trim().toLowerCase();
 
     return tabTrades.filter((trade) => {
+      const link = effectiveTradeLink(trade, tradeAccountLinks, accountLinkOptions);
+      const effectiveAccountType = link?.accountType ?? trade.accountType;
+      const effectiveAccountName = link?.accountName ?? trade.accountName;
       const matchesQuery =
         !normalizedQuery ||
         [
@@ -1171,8 +1448,8 @@ export function TradesModule({
           trade.setup,
           trade.setupTag,
           trade.playbook,
-          trade.accountType,
-          trade.accountName,
+          effectiveAccountType,
+          effectiveAccountName,
           trade.strategyType,
           trade.session,
         ]
@@ -1182,8 +1459,8 @@ export function TradesModule({
 
       return (
         matchesQuery &&
-        (!filters.accountType || trade.accountType === filters.accountType) &&
-        (!filters.accountName || trade.accountName === filters.accountName) &&
+        (!filters.accountType || effectiveAccountType === filters.accountType) &&
+        (!filters.accountName || effectiveAccountName === filters.accountName) &&
         (!filters.strategyType || trade.strategyType === filters.strategyType) &&
         (!filters.symbol || trade.symbol === filters.symbol) &&
         (!filters.setupTag || trade.setupTag === filters.setupTag) &&
@@ -1192,7 +1469,7 @@ export function TradesModule({
         (!filters.direction || trade.side === filters.direction)
       );
     });
-  }, [filters, query, tabTrades]);
+  }, [accountLinkOptions, filters, query, tabTrades, tradeAccountLinks]);
 
   const totalPages = Math.max(1, Math.ceil(filteredTrades.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -1336,6 +1613,56 @@ export function TradesModule({
         </div>
       </section>
 
+      {accountTradeMetrics.length ? (
+        <section className="mt-6 rounded-md border border-white/10 bg-[#0d121c] p-5 shadow-2xl shadow-black/20">
+          <div className="mb-4">
+            <h2 className="text-base font-semibold text-white">Account Trade Metrics</h2>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {accountTradeMetrics.map((metric) => (
+              <div
+                className="rounded-md border border-white/10 bg-white/[0.03] p-4"
+                key={`${metric.accountSource}-${metric.accountId}`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="font-semibold text-white">{metric.accountName}</div>
+                    <div className="mt-1 text-xs uppercase tracking-[0.14em] text-slate-500">
+                      {metric.accountSource === "prop" ? "FTMO Account" : "Personal Account"}
+                    </div>
+                  </div>
+                  <span className="rounded-full border border-white/10 px-2.5 py-1 text-xs font-semibold text-slate-300">
+                    {optionLabel(metric.accountType)}
+                  </span>
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Trades</div>
+                    <div className="mt-1 text-lg font-semibold text-white">{metric.tradeCount}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Net P/L</div>
+                    <div className={`mt-1 text-lg font-semibold ${metric.netPnl >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                      {money(metric.netPnl)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Win Rate</div>
+                    <div className="mt-1 text-lg font-semibold text-white">{metric.winRate.toFixed(1)}%</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-[0.14em] text-slate-500">Profit Factor</div>
+                    <div className="mt-1 text-lg font-semibold text-white">
+                      {metric.profitFactor >= 99 ? "No losses" : metric.profitFactor.toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       <section className="mt-6 rounded-md border border-white/10 bg-[#0d121c] shadow-2xl shadow-black/20">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 p-5">
           <div>
@@ -1390,6 +1717,9 @@ export function TradesModule({
             </thead>
             <tbody className="divide-y divide-white/10">
               {paginatedTrades.map((trade) => {
+                const link = effectiveTradeLink(trade, tradeAccountLinks, accountLinkOptions);
+                const effectiveAccountName = link?.accountName ?? trade.accountName ?? "Unassigned";
+                const effectiveAccountType = link?.accountType ?? trade.accountType ?? "broker";
                 const displayPnl =
                   trade.status === "Open" ? trade.floatingPnl ?? 0 : trade.pnl;
                 const positive = displayPnl >= 0;
@@ -1421,10 +1751,11 @@ export function TradesModule({
                     </td>
                     <td className="px-5 py-4">
                       <div className="font-semibold text-slate-100">
-                        {trade.accountName ?? "Unassigned"}
+                        {effectiveAccountName}
                       </div>
                       <div className="mt-1 text-xs text-slate-500">
-                        {optionLabel(trade.accountType ?? "broker")}
+                        {optionLabel(effectiveAccountType)}
+                        {link ? " / linked" : ""}
                       </div>
                     </td>
                     <td className="px-5 py-4">{trade.strategyType ?? "Swing"}</td>
@@ -1535,15 +1866,19 @@ export function TradesModule({
 
       {selectedTrade ? (
         <TradeReviewDrawer
+          accountLinkOptions={accountLinkOptions}
           key={selectedTrade.id}
+          tradeAccountLinks={tradeAccountLinks}
           trade={selectedTrade}
           onClose={() => setSelectedTrade(null)}
         />
       ) : null}
       {creatingTrade ? (
         <CreateTradeDrawer
+          accountLinkOptions={accountLinkOptions}
           defaultAccountName={activeRegistryAccountName || undefined}
           defaultAccountType={scopeAccountType}
+          lockedAccountLinkValue={lockedCreateAccountLinkValue}
           onClose={() => setCreatingTrade(false)}
         />
       ) : null}

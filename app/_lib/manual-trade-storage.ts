@@ -136,13 +136,18 @@ function sanitizeTrades(value: unknown) {
     .filter((trade): trade is Trade => Boolean(trade));
 }
 
-function toTrade(input: ManualTradeInput, tradeId: string): Trade {
+function toTrade(
+  input: ManualTradeInput,
+  tradeId: string,
+  options: { includeAccountMetadata?: boolean } = {},
+): Trade {
   const status = input.status;
   const pnl = status === "Closed" ? Number(input.profit) : Number(input.profit || 0);
   const floatingPnl = input.floatingPnl.trim() ? Number(input.floatingPnl) : undefined;
   const entry = Number(input.openPrice);
   const exit = Number(input.closePrice);
   const isPropFirm = input.accountType === "prop-firm";
+  const includeAccountMetadata = options.includeAccountMetadata ?? true;
 
   return {
     id: tradeId,
@@ -150,16 +155,31 @@ function toTrade(input: ManualTradeInput, tradeId: string): Trade {
     accountType: input.accountType,
     accountName: input.accountName,
     strategyType: input.strategyType,
-    firmName: isPropFirm ? input.firmName : undefined,
-    accountSize: isPropFirm && Number.isFinite(Number(input.accountSize)) ? Number(input.accountSize) : undefined,
-    challengeType: isPropFirm ? input.challengeType : undefined,
-    phase: isPropFirm ? input.phase : undefined,
-    profitTargetPercent: isPropFirm && Number.isFinite(Number(input.profitTargetPercent)) ? Number(input.profitTargetPercent) : undefined,
-    dailyLossLimitPercent: isPropFirm && Number.isFinite(Number(input.dailyLossLimitPercent)) ? Number(input.dailyLossLimitPercent) : undefined,
-    maxLossLimitPercent: isPropFirm && Number.isFinite(Number(input.maxLossLimitPercent)) ? Number(input.maxLossLimitPercent) : undefined,
-    minimumTradingDays: isPropFirm && Number.isFinite(Number(input.minimumTradingDays)) ? Number(input.minimumTradingDays) : undefined,
-    startDate: isPropFirm ? input.startDate || undefined : undefined,
-    propStatus: isPropFirm ? input.propStatus : undefined,
+    firmName: includeAccountMetadata && isPropFirm ? input.firmName : undefined,
+    accountSize:
+      includeAccountMetadata && isPropFirm && Number.isFinite(Number(input.accountSize))
+        ? Number(input.accountSize)
+        : undefined,
+    challengeType: includeAccountMetadata && isPropFirm ? input.challengeType : undefined,
+    phase: includeAccountMetadata && isPropFirm ? input.phase : undefined,
+    profitTargetPercent:
+      includeAccountMetadata && isPropFirm && Number.isFinite(Number(input.profitTargetPercent))
+        ? Number(input.profitTargetPercent)
+        : undefined,
+    dailyLossLimitPercent:
+      includeAccountMetadata && isPropFirm && Number.isFinite(Number(input.dailyLossLimitPercent))
+        ? Number(input.dailyLossLimitPercent)
+        : undefined,
+    maxLossLimitPercent:
+      includeAccountMetadata && isPropFirm && Number.isFinite(Number(input.maxLossLimitPercent))
+        ? Number(input.maxLossLimitPercent)
+        : undefined,
+    minimumTradingDays:
+      includeAccountMetadata && isPropFirm && Number.isFinite(Number(input.minimumTradingDays))
+        ? Number(input.minimumTradingDays)
+        : undefined,
+    startDate: includeAccountMetadata && isPropFirm ? input.startDate || undefined : undefined,
+    propStatus: includeAccountMetadata && isPropFirm ? input.propStatus : undefined,
     symbol: input.symbol.trim().toUpperCase(),
     setup: "Manual trade",
     setupTag: input.setupTag,
@@ -221,14 +241,18 @@ export function readManualTrades() {
   }
 }
 
-export function writeManualTrade(input: ManualTradeInput) {
-  const trade = toTrade(input, `MANUAL-${Date.now()}`);
-  const next = [trade, ...readManualTrades()];
+export function writeManualTrade(
+  input: ManualTradeInput,
+  options: { includeAccountMetadata?: boolean } = {},
+) {
+  const nextTrade = toTrade(input, `MANUAL-${Date.now()}`, options);
+  const next = [nextTrade, ...readManualTrades()];
   const raw = JSON.stringify(next);
   lastRaw = raw;
   lastParsed = next;
   window.localStorage.setItem(manualTradesStorageKey, raw);
   window.dispatchEvent(new CustomEvent(manualTradesUpdatedEvent, { detail: next }));
+  return nextTrade.id;
 }
 
 export function updateManualTrade(tradeId: string, input: ManualTradeInput) {

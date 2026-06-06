@@ -25,6 +25,11 @@ import {
   writePersonalTradingAccounts,
   type PersonalTradingAccount,
 } from "@/app/_lib/personal-account-storage";
+import {
+  readTradeAccountLinks,
+  subscribeToTradeAccountLinks,
+  type TradeAccountLinks,
+} from "@/app/_lib/trade-account-link-storage";
 import { buildRiskMetrics } from "@/app/_lib/risk-metrics";
 import { useHydrated } from "@/app/_lib/use-hydrated";
 import { useRiskSettings } from "@/app/_lib/use-risk-settings";
@@ -265,8 +270,24 @@ function usePersonalAccountRegistry() {
   );
 }
 
-function tradesForPropAccount(trades: Trade[], account: PropAccount) {
-  return trades.filter((trade) => trade.accountName === account.accountName);
+function tradesForPropAccount(trades: Trade[], account: PropAccount, links: TradeAccountLinks = {}) {
+  return trades.filter((trade) => {
+    const link = links[trade.id];
+    if (link) return link.accountSource === "prop" && link.accountId === account.id;
+    return trade.accountName === account.accountName;
+  });
+}
+
+function tradesForPersonalAccount(
+  trades: Trade[],
+  account: PersonalTradingAccount,
+  links: TradeAccountLinks = {},
+) {
+  return trades.filter((trade) => {
+    const link = links[trade.id];
+    if (link) return link.accountSource === "personal" && link.accountId === account.id;
+    return trade.accountName === account.accountName;
+  });
 }
 
 function buildLifecycleSummary({
@@ -296,6 +317,18 @@ function buildLifecycleSummary({
       0,
       accountSize * (maxLossLimitPercent / 100) - Math.max(0, currentDrawdown),
     ),
+  };
+}
+
+function accountTradeMetricSummary(trades: Trade[]) {
+  const closedRows = closedTrades(trades);
+  const wins = closedRows.filter((trade) => trade.result === "Win").length;
+
+  return {
+    netPnl: netProfit(trades),
+    profitFactor: profitFactor(trades),
+    tradeCount: trades.length,
+    winRate: closedRows.length ? (wins / closedRows.length) * 100 : 0,
   };
 }
 
@@ -606,6 +639,11 @@ export function PropAccountsModule() {
   const { accountReport, trades } = useTradingOsData("prop-firm");
   const settings = useRiskSettings();
   const registryAccounts = usePropAccountRegistry();
+  const tradeAccountLinks = useSyncExternalStore(
+    subscribeToTradeAccountLinks,
+    readTradeAccountLinks,
+    () => ({}),
+  );
   const rows = accountSummaries(trades);
   const [isOpen, setIsOpen] = useState(false);
   const [draft, setDraft] = useState<PropAccountDraft>(() => propDraftFromAccount());
@@ -619,7 +657,7 @@ export function PropAccountsModule() {
   const activeChallengeAccounts = registryAccounts.filter((account) => account.lifecycleStatus === "Active" && account.lifecycleType !== "Funded");
   const fundedLifecycleAccounts = registryAccounts.filter((account) => account.lifecycleType === "Funded");
   const lifecycleSummaries = registryAccounts.map((account) => {
-    const accountTrades = tradesForPropAccount(trades, account);
+    const accountTrades = tradesForPropAccount(trades, account, tradeAccountLinks);
     const risk = buildRiskMetrics({ report: accountReport, settings, trades: accountTrades });
     const targetProfit = account.targetProfit || account.accountSize * (account.profitTargetPercent / 100);
     return buildLifecycleSummary({
@@ -769,40 +807,51 @@ export function PropAccountsModule() {
                 </button>
               </div>
               <div className="grid gap-3 lg:grid-cols-2">
-              {(showArchived ? registryAccounts : activeAccounts).map((account) => (
-                <div className="rounded-md border border-white/10 bg-white/[0.03] p-4" key={account.id}>
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <div className="font-semibold text-white">{account.accountName}</div>
-                      <div className="mt-1 text-sm text-slate-400">{account.firmName} / {account.lifecycleType} / {plainMoney(account.accountSize)}</div>
+              {(showArchived ? registryAccounts : activeAccounts).map((account) => {
+                const accountTrades = tradesForPropAccount(trades, account, tradeAccountLinks);
+                const metric = accountTradeMetricSummary(accountTrades);
+
+                return (
+                  <div className="rounded-md border border-white/10 bg-white/[0.03] p-4" key={account.id}>
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <div className="font-semibold text-white">{account.accountName}</div>
+                        <div className="mt-1 text-sm text-slate-400">{account.firmName} / {account.lifecycleType} / {plainMoney(account.accountSize)}</div>
+                      </div>
+                      <Badge value={account.lifecycleStatus} tone={account.lifecycleStatus === "Failed" || account.lifecycleStatus === "Breached" ? "rose" : "emerald"} />
                     </div>
-                    <Badge value={account.lifecycleStatus} tone={account.lifecycleStatus === "Failed" || account.lifecycleStatus === "Breached" ? "rose" : "emerald"} />
-                  </div>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <Badge value={`Target ${plainMoney(account.targetProfit)}`} tone="cyan" />
-                    <Badge value={account.phase} tone="amber" />
-                    <Badge value={`${account.challengeStartDate || "Open"} / ${account.challengeEndDate || "Open"}`} />
-                  </div>
-                  <div className="mt-4 flex gap-2">
-                    <button
-                      className="rounded-md border border-white/10 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-emerald-300/40 hover:text-white"
-                      onClick={() => openEdit(account)}
-                      type="button"
-                    >
-                      Edit
-                    </button>
-                    {account.lifecycleStatus !== "Archived" ? (
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <Badge value={`Target ${plainMoney(account.targetProfit)}`} tone="cyan" />
+                      <Badge value={account.phase} tone="amber" />
+                      <Badge value={`${account.challengeStartDate || "Open"} / ${account.challengeEndDate || "Open"}`} />
+                    </div>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-4">
+                      <MetricCard label="Trades" value={`${metric.tradeCount}`} />
+                      <MetricCard label="Net P/L" value={money(metric.netPnl)} tone={metric.netPnl >= 0 ? "text-emerald-300" : "text-rose-300"} />
+                      <MetricCard label="Win Rate" value={percent(metric.winRate)} />
+                      <MetricCard label="Profit Factor" value={metric.profitFactor >= 99 ? "No losses" : metric.profitFactor.toFixed(2)} />
+                    </div>
+                    <div className="mt-4 flex gap-2">
                       <button
-                        className="rounded-md border border-white/10 px-3 py-2 text-xs font-semibold text-rose-200 transition hover:border-rose-300/40 hover:text-rose-100"
-                        onClick={() => archiveAccount(account)}
+                        className="rounded-md border border-white/10 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-emerald-300/40 hover:text-white"
+                        onClick={() => openEdit(account)}
                         type="button"
                       >
-                        Archive
+                        Edit
                       </button>
-                    ) : null}
+                      {account.lifecycleStatus !== "Archived" ? (
+                        <button
+                          className="rounded-md border border-white/10 px-3 py-2 text-xs font-semibold text-rose-200 transition hover:border-rose-300/40 hover:text-rose-100"
+                          onClick={() => archiveAccount(account)}
+                          type="button"
+                        >
+                          Archive
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               </div>
             </div>
           ) : rows.length ? (
@@ -1251,6 +1300,11 @@ export function PersonalAccountsModule() {
   const { trades } = useTradingOsData("broker");
   const rows = accountSummaries(trades);
   const registryAccounts = usePersonalAccountRegistry();
+  const tradeAccountLinks = useSyncExternalStore(
+    subscribeToTradeAccountLinks,
+    readTradeAccountLinks,
+    () => ({}),
+  );
   const [isOpen, setIsOpen] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   const [draft, setDraft] = useState<PersonalAccountDraft>(() => personalDraftFromAccount());
@@ -1383,48 +1437,57 @@ export function PersonalAccountsModule() {
                 </button>
               </div>
               <div className="grid gap-3 lg:grid-cols-2">
-                {(showArchived ? registryAccounts : activeAccounts).map((account) => (
-                  <div className="rounded-md border border-white/10 bg-white/[0.03] p-4" key={account.id}>
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <div className="font-semibold text-white">{account.accountName}</div>
-                        <div className="mt-1 text-sm text-slate-400">{account.lifecycleType} / {account.brokerName} / {account.strategyType}</div>
+                {(showArchived ? registryAccounts : activeAccounts).map((account) => {
+                  const accountTrades = tradesForPersonalAccount(trades, account, tradeAccountLinks);
+                  const metric = accountTradeMetricSummary(accountTrades);
+
+                  return (
+                    <div className="rounded-md border border-white/10 bg-white/[0.03] p-4" key={account.id}>
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="font-semibold text-white">{account.accountName}</div>
+                          <div className="mt-1 text-sm text-slate-400">{account.lifecycleType} / {account.brokerName} / {account.strategyType}</div>
+                        </div>
+                        <Badge value={account.status} tone={account.status === "Failed" || account.status === "Breached" ? "rose" : account.status === "Archived" ? "amber" : "emerald"} />
                       </div>
-                      <Badge value={account.status} tone={account.status === "Failed" || account.status === "Breached" ? "rose" : account.status === "Archived" ? "amber" : "emerald"} />
-                    </div>
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                      <MetricCard label="Initial Balance" value={plainMoney(account.initialBalance)} />
-                      <MetricCard label="Strategy" value={account.strategyType} />
-                      <MetricCard label="Target Profit" value={plainMoney(account.targetProfit)} />
-                      <MetricCard
-                        label="Remaining Target"
-                        value={plainMoney(Math.max(0, account.targetProfit - netProfit(trades.filter((trade) => trade.accountName === account.accountName))))}
-                      />
-                    </div>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <Badge value={`${account.challengeStartDate || "Open"} / ${account.challengeEndDate || "Open"}`} />
-                    </div>
-                    {account.notes ? <div className="mt-3 text-sm text-slate-500">{account.notes}</div> : null}
-                    <div className="mt-4 flex gap-2">
-                      <button
-                        className="rounded-md border border-white/10 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-emerald-300/40 hover:text-white"
-                        onClick={() => openEdit(account)}
-                        type="button"
-                      >
-                        Edit
-                      </button>
-                      {account.status !== "Archived" ? (
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                        <MetricCard label="Initial Balance" value={plainMoney(account.initialBalance)} />
+                        <MetricCard label="Target Profit" value={plainMoney(account.targetProfit)} />
+                        <MetricCard
+                          label="Remaining Target"
+                          value={plainMoney(Math.max(0, account.targetProfit - metric.netPnl))}
+                        />
+                        <MetricCard label="Trades" value={`${metric.tradeCount}`} />
+                        <MetricCard label="Net P/L" value={money(metric.netPnl)} tone={metric.netPnl >= 0 ? "text-emerald-300" : "text-rose-300"} />
+                        <MetricCard label="Win Rate" value={percent(metric.winRate)} />
+                        <MetricCard label="Profit Factor" value={metric.profitFactor >= 99 ? "No losses" : metric.profitFactor.toFixed(2)} />
+                        <MetricCard label="Strategy" value={account.strategyType} />
+                      </div>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <Badge value={`${account.challengeStartDate || "Open"} / ${account.challengeEndDate || "Open"}`} />
+                      </div>
+                      {account.notes ? <div className="mt-3 text-sm text-slate-500">{account.notes}</div> : null}
+                      <div className="mt-4 flex gap-2">
                         <button
-                          className="rounded-md border border-white/10 px-3 py-2 text-xs font-semibold text-rose-200 transition hover:border-rose-300/40 hover:text-rose-100"
-                          onClick={() => archiveAccount(account)}
+                          className="rounded-md border border-white/10 px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-emerald-300/40 hover:text-white"
+                          onClick={() => openEdit(account)}
                           type="button"
                         >
-                          Archive
+                          Edit
                         </button>
-                      ) : null}
+                        {account.status !== "Archived" ? (
+                          <button
+                            className="rounded-md border border-white/10 px-3 py-2 text-xs font-semibold text-rose-200 transition hover:border-rose-300/40 hover:text-rose-100"
+                            onClick={() => archiveAccount(account)}
+                            type="button"
+                          >
+                            Archive
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           ) : rows.length ? (
