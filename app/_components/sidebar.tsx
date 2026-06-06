@@ -13,6 +13,7 @@ type NavItem = {
 const propTradingItems: NavItem[] = [
   { href: "/prop-trading", label: "FTMO Dashboard", marker: "FD" },
   { href: "/prop-trading/trades", label: "FTMO Trades", marker: "FT" },
+  { href: "/prop-trading/review", label: "Trading Review", marker: "RV" },
   { href: "/prop-trading/analytics", label: "FTMO Analytics", marker: "FX" },
   { href: "/prop-trading/setup-intelligence", label: "Setup Intelligence", marker: "SI" },
   { href: "/prop-trading/risk", label: "FTMO Risk Monitor", marker: "FR" },
