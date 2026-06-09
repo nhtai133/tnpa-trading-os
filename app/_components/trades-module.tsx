@@ -20,6 +20,7 @@ import {
   writeManualTrade,
 } from "@/app/_lib/manual-trade-storage";
 import {
+  emptyTradeAccountLinks,
   readTradeAccountLinks,
   subscribeToTradeAccountLinks,
   writeTradeAccountLink,
@@ -1609,7 +1610,7 @@ export function TradesModule({
   const tradeAccountLinks = useSyncExternalStore(
     subscribeToTradeAccountLinks,
     readTradeAccountLinks,
-    () => ({}),
+    () => emptyTradeAccountLinks,
   );
   const tnpaPlaybookIntelligence = useSyncExternalStore(
     subscribeToTnpaPlaybookIntelligenceOverrides,

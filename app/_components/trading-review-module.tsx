@@ -17,9 +17,9 @@ import {
   tnpaGrades,
 } from "@/app/_lib/tnpa-playbook-intelligence-storage";
 import {
+  emptyTradeAccountLinks,
   readTradeAccountLinks,
   subscribeToTradeAccountLinks,
-  type TradeAccountLinks,
 } from "@/app/_lib/trade-account-link-storage";
 import { useTradingDataset } from "@/app/_lib/use-trading-dataset";
 import type {
@@ -271,7 +271,7 @@ export function TradingReviewModule({
   const tradeLinks = useSyncExternalStore(
     subscribeToTradeAccountLinks,
     readTradeAccountLinks,
-    () => ({}) as TradeAccountLinks,
+    () => emptyTradeAccountLinks,
   );
   const intelligence = useSyncExternalStore(
     subscribeToTnpaPlaybookIntelligenceOverrides,

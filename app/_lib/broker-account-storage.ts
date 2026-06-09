@@ -21,9 +21,10 @@ export type BrokerAccountInput = {
 
 export const brokerAccountsStorageKey = "tnpa.broker-accounts.v1";
 export const brokerAccountsUpdatedEvent = "tnpa:broker-accounts-updated";
+export const emptyBrokerAccounts: WealthBrokerAccount[] = [];
 
 let lastRaw: string | null = null;
-let lastParsed: WealthBrokerAccount[] = [];
+let lastParsed: WealthBrokerAccount[] = emptyBrokerAccounts;
 
 export function isSupportedBroker(value: string): value is BrokerInstitution {
   return brokerInstitutions.includes(value as BrokerInstitution);
@@ -103,7 +104,7 @@ function sanitizeAccount(value: unknown): WealthBrokerAccount | null {
 
 function sanitizeAccounts(value: unknown) {
   if (!Array.isArray(value)) {
-    return [];
+    return emptyBrokerAccounts;
   }
 
   return value
@@ -113,7 +114,7 @@ function sanitizeAccounts(value: unknown) {
 
 export function readStoredBrokerAccounts() {
   if (typeof window === "undefined") {
-    return [];
+    return emptyBrokerAccounts;
   }
 
   const raw = window.localStorage.getItem(brokerAccountsStorageKey);
@@ -124,7 +125,7 @@ export function readStoredBrokerAccounts() {
 
   if (!raw) {
     lastRaw = raw;
-    lastParsed = [];
+    lastParsed = emptyBrokerAccounts;
     return lastParsed;
   }
 
@@ -135,7 +136,7 @@ export function readStoredBrokerAccounts() {
   } catch {
     window.localStorage.removeItem(brokerAccountsStorageKey);
     lastRaw = null;
-    lastParsed = [];
+    lastParsed = emptyBrokerAccounts;
     return lastParsed;
   }
 }

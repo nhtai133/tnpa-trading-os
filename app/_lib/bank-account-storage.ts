@@ -21,9 +21,10 @@ export type BankAccountArchiveInput = {
 
 export const bankAccountsStorageKey = "tnpa.bank-accounts.v1";
 export const bankAccountsUpdatedEvent = "tnpa:bank-accounts-updated";
+export const emptyBankAccounts: WealthAccount[] = [];
 
 let lastRaw: string | null = null;
-let lastParsed: WealthAccount[] = [];
+let lastParsed: WealthAccount[] = emptyBankAccounts;
 
 export function isSupportedBankInstitution(value: string): value is Institution {
   return institutions.includes(value as Institution);
@@ -76,7 +77,7 @@ function sanitizeAccount(value: unknown): WealthAccount | null {
 
 function sanitizeAccounts(value: unknown) {
   if (!Array.isArray(value)) {
-    return [];
+    return emptyBankAccounts;
   }
 
   return value
@@ -86,7 +87,7 @@ function sanitizeAccounts(value: unknown) {
 
 export function readStoredBankAccounts() {
   if (typeof window === "undefined") {
-    return [];
+    return emptyBankAccounts;
   }
 
   const raw = window.localStorage.getItem(bankAccountsStorageKey);
@@ -97,7 +98,7 @@ export function readStoredBankAccounts() {
 
   if (!raw) {
     lastRaw = raw;
-    lastParsed = [];
+    lastParsed = emptyBankAccounts;
     return lastParsed;
   }
 
@@ -108,7 +109,7 @@ export function readStoredBankAccounts() {
   } catch {
     window.localStorage.removeItem(bankAccountsStorageKey);
     lastRaw = null;
-    lastParsed = [];
+    lastParsed = emptyBankAccounts;
     return lastParsed;
   }
 }

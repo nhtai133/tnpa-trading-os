@@ -43,9 +43,10 @@ export type ManualTradeInput = TradeJournal & {
 
 export const manualTradesStorageKey = "tnpa.manual-trades.v1";
 export const manualTradesUpdatedEvent = "tnpa:manual-trades-updated";
+export const emptyManualTrades: Trade[] = [];
 
 let lastRaw: string | null = null;
-let lastParsed: Trade[] = [];
+let lastParsed: Trade[] = emptyManualTrades;
 let manualTradeIdCounter = 0;
 
 function cleanText(value: unknown) {
@@ -145,7 +146,7 @@ function normalizeDuplicateTradeId(tradeId: string, seenIds: Set<string>) {
 
 function sanitizeTrades(value: unknown) {
   if (!Array.isArray(value)) {
-    return [];
+    return emptyManualTrades;
   }
 
   const seenIds = new Set<string>();
@@ -237,7 +238,7 @@ function toTrade(
 
 export function readManualTrades() {
   if (typeof window === "undefined") {
-    return [];
+    return emptyManualTrades;
   }
 
   const raw = window.localStorage.getItem(manualTradesStorageKey);
@@ -248,7 +249,7 @@ export function readManualTrades() {
 
   if (!raw) {
     lastRaw = raw;
-    lastParsed = [];
+    lastParsed = emptyManualTrades;
     return lastParsed;
   }
 
@@ -259,7 +260,7 @@ export function readManualTrades() {
   } catch {
     window.localStorage.removeItem(manualTradesStorageKey);
     lastRaw = null;
-    lastParsed = [];
+    lastParsed = emptyManualTrades;
     return lastParsed;
   }
 }

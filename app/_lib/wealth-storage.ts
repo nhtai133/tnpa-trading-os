@@ -7,9 +7,10 @@ import {
 
 export const wealthAssetsStorageKey = "tnpa.wealth-assets.v1";
 export const wealthAssetsUpdatedEvent = "tnpa:wealth-assets-updated";
+export const emptyWealthAssets: WealthAsset[] = [];
 
 let lastRaw: string | null = null;
-let lastParsed: WealthAsset[] = [];
+let lastParsed: WealthAsset[] = emptyWealthAssets;
 
 export function isArchiveReason(value: string): value is ArchiveReason {
   return archiveReasons.includes(value as ArchiveReason);
@@ -62,7 +63,7 @@ function sanitizeAsset(value: unknown): WealthAsset | null {
 
 function sanitizeAssets(value: unknown) {
   if (!Array.isArray(value)) {
-    return [];
+    return emptyWealthAssets;
   }
 
   return value
@@ -72,7 +73,7 @@ function sanitizeAssets(value: unknown) {
 
 export function readStoredWealthAssets() {
   if (typeof window === "undefined") {
-    return [];
+    return emptyWealthAssets;
   }
 
   const raw = window.localStorage.getItem(wealthAssetsStorageKey);
@@ -83,7 +84,7 @@ export function readStoredWealthAssets() {
 
   if (!raw) {
     lastRaw = raw;
-    lastParsed = [];
+    lastParsed = emptyWealthAssets;
     return lastParsed;
   }
 
@@ -94,7 +95,7 @@ export function readStoredWealthAssets() {
   } catch {
     window.localStorage.removeItem(wealthAssetsStorageKey);
     lastRaw = null;
-    lastParsed = [];
+    lastParsed = emptyWealthAssets;
     return lastParsed;
   }
 }

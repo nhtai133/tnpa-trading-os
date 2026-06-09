@@ -10,9 +10,10 @@ export type TradeJournalOverrides = Record<string, TradeJournal>;
 
 export const tradeJournalStorageKey = "tnpa.trade-journal.v1";
 export const tradeJournalUpdatedEvent = "tnpa:trade-journal-updated";
+export const emptyTradeJournalOverrides: TradeJournalOverrides = {};
 
 let lastRaw: string | null = null;
-let lastParsed: TradeJournalOverrides = {};
+let lastParsed: TradeJournalOverrides = emptyTradeJournalOverrides;
 
 function isEmotion(value: unknown): value is TradeEmotion {
   return (
@@ -52,7 +53,7 @@ function sanitizeJournal(value: unknown): TradeJournal {
 
 function sanitizeOverrides(value: unknown): TradeJournalOverrides {
   if (!value || typeof value !== "object") {
-    return {};
+    return emptyTradeJournalOverrides;
   }
 
   return Object.fromEntries(
@@ -65,7 +66,7 @@ function sanitizeOverrides(value: unknown): TradeJournalOverrides {
 
 export function readTradeJournalOverrides() {
   if (typeof window === "undefined") {
-    return {};
+    return emptyTradeJournalOverrides;
   }
 
   const raw = window.localStorage.getItem(tradeJournalStorageKey);
@@ -76,7 +77,7 @@ export function readTradeJournalOverrides() {
 
   if (!raw) {
     lastRaw = raw;
-    lastParsed = {};
+    lastParsed = emptyTradeJournalOverrides;
     return lastParsed;
   }
 
@@ -87,7 +88,7 @@ export function readTradeJournalOverrides() {
   } catch {
     window.localStorage.removeItem(tradeJournalStorageKey);
     lastRaw = null;
-    lastParsed = {};
+    lastParsed = emptyTradeJournalOverrides;
     return lastParsed;
   }
 }

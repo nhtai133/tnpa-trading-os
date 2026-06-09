@@ -13,9 +13,10 @@ export type TradeAccountLinks = Record<string, TradeAccountLink>;
 
 export const tradeAccountLinksStorageKey = "tnpa.trade-account-links.v1";
 export const tradeAccountLinksUpdatedEvent = "tnpa:trade-account-links-updated";
+export const emptyTradeAccountLinks: TradeAccountLinks = {};
 
 let lastRaw: string | null = null;
-let lastParsed: TradeAccountLinks = {};
+let lastParsed: TradeAccountLinks = emptyTradeAccountLinks;
 
 function sanitizeLink(value: unknown): TradeAccountLink | null {
   if (!value || typeof value !== "object") return null;
@@ -46,7 +47,7 @@ function sanitizeLink(value: unknown): TradeAccountLink | null {
 }
 
 function sanitizeLinks(value: unknown): TradeAccountLinks {
-  if (!value || typeof value !== "object") return {};
+  if (!value || typeof value !== "object") return emptyTradeAccountLinks;
 
   return Object.fromEntries(
     Object.entries(value)
@@ -57,14 +58,14 @@ function sanitizeLinks(value: unknown): TradeAccountLinks {
 }
 
 export function readTradeAccountLinks() {
-  if (typeof window === "undefined") return {};
+  if (typeof window === "undefined") return emptyTradeAccountLinks;
 
   const raw = window.localStorage.getItem(tradeAccountLinksStorageKey);
   if (raw === lastRaw) return lastParsed;
 
   lastRaw = raw;
   if (!raw) {
-    lastParsed = {};
+    lastParsed = emptyTradeAccountLinks;
     return lastParsed;
   }
 
@@ -73,7 +74,7 @@ export function readTradeAccountLinks() {
   } catch {
     window.localStorage.removeItem(tradeAccountLinksStorageKey);
     lastRaw = null;
-    lastParsed = {};
+    lastParsed = emptyTradeAccountLinks;
   }
 
   return lastParsed;

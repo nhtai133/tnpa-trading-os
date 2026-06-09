@@ -16,9 +16,10 @@ export type WealthSnapshot = {
 
 export const wealthSnapshotsStorageKey = "tnpa.wealth-snapshots.v1";
 export const wealthSnapshotsUpdatedEvent = "tnpa:wealth-snapshots-updated";
+export const emptyWealthSnapshots: WealthSnapshot[] = [];
 
 let lastRaw: string | null = null;
-let lastParsed: WealthSnapshot[] = [];
+let lastParsed: WealthSnapshot[] = emptyWealthSnapshots;
 
 function sanitizeSnapshot(value: unknown): WealthSnapshot | null {
   if (!value || typeof value !== "object") {
@@ -64,7 +65,7 @@ function sanitizeSnapshot(value: unknown): WealthSnapshot | null {
 
 function sanitizeSnapshots(value: unknown) {
   if (!Array.isArray(value)) {
-    return [];
+    return emptyWealthSnapshots;
   }
 
   return value
@@ -74,7 +75,7 @@ function sanitizeSnapshots(value: unknown) {
 
 export function readStoredWealthSnapshots() {
   if (typeof window === "undefined") {
-    return [];
+    return emptyWealthSnapshots;
   }
 
   const raw = window.localStorage.getItem(wealthSnapshotsStorageKey);
@@ -85,7 +86,7 @@ export function readStoredWealthSnapshots() {
 
   if (!raw) {
     lastRaw = raw;
-    lastParsed = [];
+    lastParsed = emptyWealthSnapshots;
     return lastParsed;
   }
 
@@ -96,7 +97,7 @@ export function readStoredWealthSnapshots() {
   } catch {
     window.localStorage.removeItem(wealthSnapshotsStorageKey);
     lastRaw = null;
-    lastParsed = [];
+    lastParsed = emptyWealthSnapshots;
     return lastParsed;
   }
 }

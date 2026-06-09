@@ -4,9 +4,10 @@ export type SetupTagOverrides = Record<string, SetupTag>;
 
 export const setupTagStorageKey = "tnpa.setup-tags.v1";
 export const setupTagUpdatedEvent = "tnpa:setup-tags-updated";
+export const emptySetupTagOverrides: SetupTagOverrides = {};
 
 let lastRaw: string | null = null;
-let lastParsed: SetupTagOverrides = {};
+let lastParsed: SetupTagOverrides = emptySetupTagOverrides;
 
 export function isSetupTag(value: string): value is SetupTag {
   return setupTags.includes(value as SetupTag);
@@ -36,7 +37,7 @@ export function getDefaultSetupTag(setup: string): SetupTag {
 
 function sanitizeOverrides(value: unknown): SetupTagOverrides {
   if (!value || typeof value !== "object") {
-    return {};
+    return emptySetupTagOverrides;
   }
 
   return Object.fromEntries(
@@ -49,7 +50,7 @@ function sanitizeOverrides(value: unknown): SetupTagOverrides {
 
 export function readSetupTagOverrides() {
   if (typeof window === "undefined") {
-    return {};
+    return emptySetupTagOverrides;
   }
 
   const raw = window.localStorage.getItem(setupTagStorageKey);
@@ -60,7 +61,7 @@ export function readSetupTagOverrides() {
 
   if (!raw) {
     lastRaw = raw;
-    lastParsed = {};
+    lastParsed = emptySetupTagOverrides;
     return lastParsed;
   }
 
@@ -71,7 +72,7 @@ export function readSetupTagOverrides() {
   } catch {
     window.localStorage.removeItem(setupTagStorageKey);
     lastRaw = null;
-    lastParsed = {};
+    lastParsed = emptySetupTagOverrides;
     return lastParsed;
   }
 }

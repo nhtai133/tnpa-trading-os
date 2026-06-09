@@ -26,6 +26,7 @@ import {
   type PersonalTradingAccount,
 } from "@/app/_lib/personal-account-storage";
 import {
+  emptyTradeAccountLinks,
   readTradeAccountLinks,
   subscribeToTradeAccountLinks,
   type TradeAccountLinks,
@@ -270,7 +271,11 @@ function usePersonalAccountRegistry() {
   );
 }
 
-function tradesForPropAccount(trades: Trade[], account: PropAccount, links: TradeAccountLinks = {}) {
+function tradesForPropAccount(
+  trades: Trade[],
+  account: PropAccount,
+  links: TradeAccountLinks = emptyTradeAccountLinks,
+) {
   return trades.filter((trade) => {
     const link = links[trade.id];
     if (link) return link.accountSource === "prop" && link.accountId === account.id;
@@ -281,7 +286,7 @@ function tradesForPropAccount(trades: Trade[], account: PropAccount, links: Trad
 function tradesForPersonalAccount(
   trades: Trade[],
   account: PersonalTradingAccount,
-  links: TradeAccountLinks = {},
+  links: TradeAccountLinks = emptyTradeAccountLinks,
 ) {
   return trades.filter((trade) => {
     const link = links[trade.id];
@@ -979,7 +984,7 @@ export function PropAccountsModule() {
   const tradeAccountLinks = useSyncExternalStore(
     subscribeToTradeAccountLinks,
     readTradeAccountLinks,
-    () => ({}),
+    () => emptyTradeAccountLinks,
   );
   const payouts = useSyncExternalStore(
     subscribeToFtmoPayouts,
@@ -1675,7 +1680,7 @@ export function PersonalAccountsModule() {
   const tradeAccountLinks = useSyncExternalStore(
     subscribeToTradeAccountLinks,
     readTradeAccountLinks,
-    () => ({}),
+    () => emptyTradeAccountLinks,
   );
   const withdrawals = useSyncExternalStore(subscribeWithdrawals, readWithdrawals, () => emptyWithdrawals);
   const [isOpen, setIsOpen] = useState(false);

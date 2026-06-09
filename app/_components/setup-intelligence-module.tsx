@@ -8,6 +8,7 @@ import {
   subscribeToPropAccounts,
 } from "@/app/_lib/prop-account-storage";
 import {
+  emptyTnpaPlaybookIntelligenceOverrides,
   evaluateTnpaGrade,
   readTnpaPlaybookIntelligenceOverrides,
   subscribeToTnpaPlaybookIntelligenceOverrides,
@@ -18,6 +19,7 @@ import {
   type TnpaPlaybookIntelligenceOverrides,
 } from "@/app/_lib/tnpa-playbook-intelligence-storage";
 import {
+  emptyTradeAccountLinks,
   readTradeAccountLinks,
   subscribeToTradeAccountLinks,
 } from "@/app/_lib/trade-account-link-storage";
@@ -313,12 +315,12 @@ export function SetupIntelligenceModule({
   const tradeAccountLinks = useSyncExternalStore(
     subscribeToTradeAccountLinks,
     readTradeAccountLinks,
-    () => ({}),
+    () => emptyTradeAccountLinks,
   );
   const tnpaIntelligence = useSyncExternalStore(
     subscribeToTnpaPlaybookIntelligenceOverrides,
     readTnpaPlaybookIntelligenceOverrides,
-    () => ({}),
+    () => emptyTnpaPlaybookIntelligenceOverrides,
   );
   const { tradeHistory } = useTradingDataset({
     fallbackEquityCurve,

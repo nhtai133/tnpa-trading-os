@@ -4,9 +4,10 @@ export type PlaybookOverrides = Record<string, Playbook>;
 
 export const playbookStorageKey = "tnpa.playbooks.v1";
 export const playbookUpdatedEvent = "tnpa:playbooks-updated";
+export const emptyPlaybookOverrides: PlaybookOverrides = {};
 
 let lastRaw: string | null = null;
-let lastParsed: PlaybookOverrides = {};
+let lastParsed: PlaybookOverrides = emptyPlaybookOverrides;
 
 export function isPlaybook(value: string): value is Playbook {
   return playbooks.includes(value as Playbook);
@@ -52,7 +53,7 @@ export function getDefaultPlaybook(setup: string, setupTag?: SetupTag): Playbook
 
 function sanitizeOverrides(value: unknown): PlaybookOverrides {
   if (!value || typeof value !== "object") {
-    return {};
+    return emptyPlaybookOverrides;
   }
 
   return Object.fromEntries(
@@ -65,7 +66,7 @@ function sanitizeOverrides(value: unknown): PlaybookOverrides {
 
 export function readPlaybookOverrides() {
   if (typeof window === "undefined") {
-    return {};
+    return emptyPlaybookOverrides;
   }
 
   const raw = window.localStorage.getItem(playbookStorageKey);
@@ -76,7 +77,7 @@ export function readPlaybookOverrides() {
 
   if (!raw) {
     lastRaw = raw;
-    lastParsed = {};
+    lastParsed = emptyPlaybookOverrides;
     return lastParsed;
   }
 
@@ -87,7 +88,7 @@ export function readPlaybookOverrides() {
   } catch {
     window.localStorage.removeItem(playbookStorageKey);
     lastRaw = null;
-    lastParsed = {};
+    lastParsed = emptyPlaybookOverrides;
     return lastParsed;
   }
 }
