@@ -29,7 +29,6 @@ import {
   brokerAccountNames,
   challengeTypes,
   propAccountStatuses,
-  propFirmAccountNames,
   propFirmNames,
   propPhases,
   strategyTypes,
@@ -63,7 +62,7 @@ function decodeFileBuffer(buffer: ArrayBuffer) {
 }
 
 function accountNameOptions(accountType: AccountType) {
-  return accountType === "prop-firm" ? [...propFirmAccountNames] : [...brokerAccountNames];
+  return accountType === "prop-firm" ? [] : [...brokerAccountNames];
 }
 
 function assignAccountToReport({
@@ -175,7 +174,7 @@ export function ImportMt5Module({
     defaultAccountType ?? report?.accountType ?? "prop-firm",
   );
   const [accountName, setAccountName] = useState(
-    defaultAccountType === "prop-firm" ? "FTMO" : report?.accountName ?? "FTMO",
+    defaultAccountType === "prop-firm" ? "" : report?.accountName ?? "",
   );
   const [strategyType, setStrategyType] = useState<StrategyType>(
     defaultAccountType === "prop-firm" ? "Intraweek" : report?.strategyType ?? "Intraweek",
@@ -212,8 +211,10 @@ export function ImportMt5Module({
   );
   const registryAccountNames = propAccounts.map((account) => account.accountName);
   const activeAccountName =
-    accountType === "prop-firm" && registryAccountNames.length && !registryAccountNames.includes(accountName)
-      ? registryAccountNames[0]
+    accountType === "prop-firm"
+      ? registryAccountNames.includes(accountName)
+        ? accountName
+        : registryAccountNames[0] ?? ""
       : accountName;
   const selectedRegistryAccount =
     accountType === "prop-firm"
@@ -423,7 +424,7 @@ export function ImportMt5Module({
               onChange={(event) => {
                 const nextType = event.target.value as AccountType;
                 setAccountType(nextType);
-                setAccountName(nextType === "prop-firm" ? "FTMO" : "ICMarkets");
+                setAccountName(nextType === "prop-firm" ? "" : "ICMarkets");
                 setStrategyType(nextType === "prop-firm" ? "Intraweek" : "Swing");
               }}
             >

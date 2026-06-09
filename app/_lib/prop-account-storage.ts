@@ -62,112 +62,6 @@ let lastParsed: PropAccount[] = emptyPropAccounts;
 let lastPayoutRaw: string | null = null;
 let lastPayoutParsed: FtmoPayout[] = emptyFtmoPayouts;
 
-export const demoPropAccountIds = [
-  "DEMO-FTMO-V1-100K",
-  "DEMO-FTMO-V1-200K",
-  "DEMO-FTMO-V2-100K-A",
-  "DEMO-FTMO-V2-100K-B",
-  "DEMO-PROP-FTMO-LIVE-50K",
-];
-
-export const demoPropAccounts: PropAccount[] = [
-  {
-    id: demoPropAccountIds[0],
-    firmName: "FTMO",
-    accountName: "FTMO V1 100K",
-    lifecycleType: "Challenge v1",
-    accountSize: 100000,
-    challengeType: "FTMO Challenge V1",
-    phase: "Phase 1",
-    status: "Active",
-    lifecycleStatus: "Active",
-    startDate: "",
-    challengeStartDate: "",
-    challengeEndDate: "",
-    targetProfit: 10000,
-    minimumTradingDays: 4,
-    profitTargetPercent: 10,
-    dailyLossLimitPercent: 5,
-    maxLossLimitPercent: 10,
-  },
-  {
-    id: demoPropAccountIds[1],
-    firmName: "FTMO",
-    accountName: "FTMO V1 200K",
-    lifecycleType: "Challenge v1",
-    accountSize: 200000,
-    challengeType: "FTMO Challenge V1",
-    phase: "Phase 1",
-    status: "Active",
-    lifecycleStatus: "Active",
-    startDate: "",
-    challengeStartDate: "",
-    challengeEndDate: "",
-    targetProfit: 20000,
-    minimumTradingDays: 4,
-    profitTargetPercent: 10,
-    dailyLossLimitPercent: 5,
-    maxLossLimitPercent: 10,
-  },
-  {
-    id: demoPropAccountIds[2],
-    firmName: "FTMO",
-    accountName: "FTMO V2 100K A",
-    lifecycleType: "Challenge v2",
-    accountSize: 100000,
-    challengeType: "FTMO Challenge V2",
-    phase: "Phase 1",
-    status: "Active",
-    lifecycleStatus: "Active",
-    startDate: "",
-    challengeStartDate: "",
-    challengeEndDate: "",
-    targetProfit: 10000,
-    minimumTradingDays: 4,
-    profitTargetPercent: 10,
-    dailyLossLimitPercent: 5,
-    maxLossLimitPercent: 10,
-  },
-  {
-    id: demoPropAccountIds[3],
-    firmName: "FTMO",
-    accountName: "FTMO V2 100K B",
-    lifecycleType: "Challenge v2",
-    accountSize: 100000,
-    challengeType: "FTMO Challenge V2",
-    phase: "Phase 1",
-    status: "Active",
-    lifecycleStatus: "Active",
-    startDate: "",
-    challengeStartDate: "",
-    challengeEndDate: "",
-    targetProfit: 10000,
-    minimumTradingDays: 4,
-    profitTargetPercent: 10,
-    dailyLossLimitPercent: 5,
-    maxLossLimitPercent: 10,
-  },
-  {
-    id: demoPropAccountIds[4],
-    firmName: "FTMO",
-    accountName: "FTMO Live 50K",
-    lifecycleType: "Funded",
-    accountSize: 50000,
-    challengeType: "FTMO Funded",
-    phase: "Funded",
-    status: "Active",
-    lifecycleStatus: "Active",
-    startDate: "",
-    challengeStartDate: "",
-    challengeEndDate: "",
-    targetProfit: 5000,
-    minimumTradingDays: 0,
-    profitTargetPercent: 10,
-    dailyLossLimitPercent: 5,
-    maxLossLimitPercent: 10,
-  },
-];
-
 function lifecycleTypeFromLegacy(account: Partial<PropAccount> & { lifecycleType?: unknown }): PropAccount["lifecycleType"] {
   if (
     account.lifecycleType === "Challenge v1" ||
@@ -299,23 +193,6 @@ export function subscribeToPropAccounts(callback: () => void) {
     window.removeEventListener(storageEvent, listener);
   };
 }
-
-export function loadDemoPropAccounts() {
-  const currentAccounts = readStoredPropAccounts();
-  writePropAccounts([
-    ...currentAccounts.filter((account) => !demoPropAccountIds.includes(account.id)),
-    ...demoPropAccounts,
-  ]);
-}
-
-export function clearDemoPropAccounts() {
-  writePropAccounts(
-    readStoredPropAccounts().filter((account) => !demoPropAccountIds.includes(account.id)),
-  );
-}
-
-export const loadDemoFtmoAccounts = loadDemoPropAccounts;
-export const clearDemoFtmoAccounts = clearDemoPropAccounts;
 
 export function readStoredFtmoPayouts() {
   if (typeof window === "undefined") return emptyFtmoPayouts;

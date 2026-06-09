@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Sidebar } from "@/app/_components/sidebar";
+import { TradingDataMigrationRunner } from "@/app/_components/trading-data-migration-runner";
 
 type AppShellProps = {
   eyebrow: string;
@@ -11,6 +12,7 @@ type AppShellProps = {
 export function AppShell({ action, children, eyebrow, title }: AppShellProps) {
   return (
     <div className="min-h-screen bg-[#070a11] text-slate-100">
+      <TradingDataMigrationRunner />
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_right,rgba(16,185,129,0.14),transparent_32rem)]" />
       <div className="relative flex">
         <Sidebar />

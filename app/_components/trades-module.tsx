@@ -76,7 +76,6 @@ import {
   mistakeOptions,
   playbooks,
   propAccountStatuses,
-  propFirmAccountNames,
   propFirmNames,
   propPhases,
   setupTags,
@@ -195,14 +194,14 @@ function uniqueValues(
 
 function accountNameOptions(accountType: string, registryAccountNames: string[] = []) {
   if (accountType === "prop-firm") {
-    return registryAccountNames.length ? registryAccountNames : [...propFirmAccountNames];
+    return registryAccountNames;
   }
 
   if (accountType === "broker") {
     return [...brokerAccountNames];
   }
 
-  return [...propFirmAccountNames, ...brokerAccountNames];
+  return [...registryAccountNames, ...brokerAccountNames];
 }
 
 function accountLinkValue(source: TradeAccountSource, accountId: string) {
@@ -981,7 +980,7 @@ function TradeReviewDrawer({
                 updateManualDraft("accountType", value as AccountType);
                 updateManualDraft(
                   "accountName",
-                  value === "prop-firm" ? registryAccountNames[0] ?? "FTMO" : "ICMarkets",
+                  value === "prop-firm" ? registryAccountNames[0] ?? "" : "ICMarkets",
                 );
                 updateManualDraft("strategyType", value === "prop-firm" ? "Intraweek" : "Swing");
               }}
