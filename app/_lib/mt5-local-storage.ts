@@ -1,4 +1,9 @@
 import type { Mt5AccountReport } from "@/app/_lib/trading-types";
+import {
+  backfillMt5TradeIdentifiers,
+  importMt5Report,
+  type Mt5ImportResult,
+} from "@/app/_lib/mt5-import-service";
 
 export const mt5ImportStorageKey = "tnpa.mt5.import.v1";
 export const mt5ImportUpdatedEvent = "tnpa:mt5-import-updated";
@@ -25,7 +30,7 @@ export function readStoredMt5Report() {
 
   try {
     lastRaw = raw;
-    lastParsed = JSON.parse(raw) as Mt5AccountReport;
+    lastParsed = backfillMt5TradeIdentifiers(JSON.parse(raw) as Mt5AccountReport);
     return lastParsed;
   } catch {
     window.localStorage.removeItem(mt5ImportStorageKey);
@@ -36,11 +41,25 @@ export function readStoredMt5Report() {
 }
 
 export function writeStoredMt5Report(report: Mt5AccountReport) {
-  const raw = JSON.stringify(report);
+  const migratedReport = backfillMt5TradeIdentifiers(report);
+  const raw = JSON.stringify(migratedReport);
   lastRaw = raw;
-  lastParsed = report;
+  lastParsed = migratedReport;
   window.localStorage.setItem(mt5ImportStorageKey, raw);
-  window.dispatchEvent(new CustomEvent(mt5ImportUpdatedEvent, { detail: report }));
+  window.dispatchEvent(new CustomEvent(mt5ImportUpdatedEvent, { detail: migratedReport }));
+}
+
+export function importStoredMt5Report(
+  report: Mt5AccountReport,
+  options: { dryRun?: boolean } = {},
+): Mt5ImportResult {
+  const result = importMt5Report(report, readStoredMt5Report(), options);
+
+  if (!options.dryRun) {
+    writeStoredMt5Report(result.report);
+  }
+
+  return result;
 }
 
 export function subscribeToStoredMt5Report(onStoreChange: () => void) {

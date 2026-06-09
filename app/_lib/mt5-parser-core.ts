@@ -20,6 +20,11 @@ function parseNumber(value: string) {
   return normalized ? Number(normalized) : 0;
 }
 
+function optionalNumber(value: string) {
+  const parsed = parseNumber(value);
+  return Number.isFinite(parsed) && decodeHtml(value) !== "" ? parsed : undefined;
+}
+
 function sectionBetween(html: string, startLabel: string, endLabel: string) {
   const start = html.indexOf(`<b>${startLabel}</b>`);
   const end = html.indexOf(`<b>${endLabel}</b>`, start);
@@ -85,23 +90,61 @@ function toTrade(cells: string[]): Trade | null {
     return null;
   }
 
+  const positionId = cells[1];
+  const side = cells[3].toLowerCase() === "buy" ? "Long" : "Short";
+  const openTime = cells[0];
+  const closeTime = cells[8];
+  const entry = parseNumber(cells[5]);
+  const exit = parseNumber(cells[9]);
+  const volume = cells[4];
   const pnl = parseNumber(cells[12]);
   const commission = parseNumber(cells[10]);
+  const swap = parseNumber(cells[11]);
   const riskBasis = Math.max(Math.abs(commission) * 100, Math.abs(pnl) || 1);
   const rr = pnl >= 0 ? Math.max(0.1, Math.abs(pnl) / riskBasis) : -1;
+  const rawImportPayload = {
+    position_id: positionId,
+    symbol: cells[2],
+    side: cells[3],
+    volume,
+    open_time: openTime,
+    close_time: closeTime,
+    entry_price: entry,
+    exit_price: exit,
+    stop_loss: optionalNumber(cells[6]),
+    take_profit: optionalNumber(cells[7]),
+    commission,
+    swap,
+    profit: pnl,
+  };
 
   return {
-    id: `MT5-${cells[1]}`,
+    id: `MT5-${positionId}`,
+    brokerTradeIdentifier: positionId,
+    broker_trade_identifier: positionId,
+    positionId,
+    position_id: positionId,
     symbol: cells[2],
     setup: "MT5 imported",
     setupTag: "Other",
     playbook: "Other",
     status: "Closed",
-    side: cells[3].toLowerCase() === "buy" ? "Long" : "Short",
-    date: formatMt5Date(cells[8]),
-    session: inferSession(cells[8]),
-    entry: parseNumber(cells[5]),
-    exit: parseNumber(cells[9]),
+    side,
+    date: formatMt5Date(closeTime),
+    session: inferSession(closeTime),
+    openTime,
+    closeTime,
+    volume,
+    openPrice: entry,
+    closePrice: exit,
+    stopLoss: rawImportPayload.stop_loss,
+    takeProfit: rawImportPayload.take_profit,
+    commission,
+    swap,
+    rawImportPayload,
+    raw_import_payload: rawImportPayload,
+    entry,
+    exit,
     rr: Number(rr.toFixed(2)),
     pnl,
     result: pnl >= 0 ? "Win" : "Loss",

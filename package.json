@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "test:mt5-import": "node --experimental-strip-types --test app/_lib/mt5-import-service.test.ts",
     "start": "next start",
     "lint": "eslint"
   },

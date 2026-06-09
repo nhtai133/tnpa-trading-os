@@ -147,6 +147,17 @@ export type TradeJournal = {
 export type Trade = {
   id: string;
   source?: TradeSource;
+  accountId?: string;
+  account_id?: string;
+  brokerTradeIdentifier?: string;
+  broker_trade_identifier?: string;
+  positionId?: string;
+  position_id?: string;
+  dealId?: string;
+  deal_id?: string;
+  orderId?: string;
+  order_id?: string;
+  ticket?: string;
   accountType?: AccountType;
   accountName?: string;
   strategyType?: StrategyType;
@@ -162,8 +173,20 @@ export type Trade = {
   propStatus?: PropAccountStatus;
   symbol: string;
   setup: string;
+  setup_id?: string;
   setupTag: SetupTag;
+  setup_tag?: SetupTag;
   playbook: Playbook;
+  review_status?: string;
+  trade_grade?: string;
+  notes?: string;
+  mistakes?: string[];
+  lessons?: string;
+  screenshots?: string[];
+  emotional_state?: string;
+  rule_followed?: boolean;
+  rule_violations?: string[];
+  tags?: string[];
   status: "Open" | "Closed";
   side: "Long" | "Short";
   date: string;
@@ -173,6 +196,16 @@ export type Trade = {
   volume?: string;
   openPrice?: number;
   closePrice?: number;
+  stopLoss?: number;
+  takeProfit?: number;
+  commission?: number;
+  swap?: number;
+  rawImportPayload?: Record<string, string | number | undefined>;
+  raw_import_payload?: Record<string, string | number | undefined>;
+  importedAt?: string;
+  imported_at?: string;
+  importBatchId?: string;
+  import_batch_id?: string;
   entry: number;
   exit: number;
   rr: number;
@@ -183,6 +216,8 @@ export type Trade = {
 
 export type Mt5AccountReport = {
   sourceFile: string;
+  accountId?: string;
+  account_id?: string;
   accountType?: AccountType;
   accountName?: string;
   strategyType?: StrategyType;

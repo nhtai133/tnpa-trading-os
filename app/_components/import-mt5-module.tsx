@@ -3,10 +3,11 @@
 import { useRef, useState, useSyncExternalStore } from "react";
 import { AppShell } from "@/app/_components/app-shell";
 import {
+  importStoredMt5Report,
   readStoredMt5Report,
   subscribeToStoredMt5Report,
-  writeStoredMt5Report,
 } from "@/app/_lib/mt5-local-storage";
+import type { Mt5ImportSummary } from "@/app/_lib/mt5-import-service";
 import { parseMt5ReportHtml } from "@/app/_lib/mt5-parser-core";
 import {
   emptyPropAccounts,
@@ -66,6 +67,7 @@ function accountNameOptions(accountType: AccountType) {
 }
 
 function assignAccountToReport({
+  accountId,
   accountName,
   accountType,
   accountSize,
@@ -81,6 +83,7 @@ function assignAccountToReport({
   startDate,
   strategyType,
 }: {
+  accountId: string;
   accountName: string;
   accountType: AccountType;
   accountSize: number;
@@ -100,6 +103,8 @@ function assignAccountToReport({
 
   return {
     ...report,
+    accountId,
+    account_id: accountId,
     accountType,
     accountName,
     strategyType,
@@ -115,6 +120,8 @@ function assignAccountToReport({
     propStatus: isPropFirm ? propStatus : undefined,
     trades: report.trades.map((trade) => ({
       ...trade,
+      accountId,
+      account_id: accountId,
       source: "mt5",
       accountType,
       accountName,
@@ -212,6 +219,7 @@ export function ImportMt5Module({
     accountType === "prop-firm"
       ? propAccounts.find((account) => account.accountName === activeAccountName) ?? null
       : null;
+  const effectiveAccountId = selectedRegistryAccount?.id ?? `${accountType}:${activeAccountName}`;
   const effectiveFirmName = selectedRegistryAccount?.firmName ?? firmName;
   const effectiveAccountSize = selectedRegistryAccount?.accountSize ?? Number(accountSize);
   const effectiveChallengeType = selectedRegistryAccount?.challengeType ?? challengeType;
@@ -225,6 +233,8 @@ export function ImportMt5Module({
   const [status, setStatus] = useState<ImportState>(
     report ? "success" : "idle",
   );
+  const [isDryRun, setIsDryRun] = useState(false);
+  const [importSummary, setImportSummary] = useState<Mt5ImportSummary | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const displayStatus = status === "idle" && report ? "success" : status;
@@ -243,6 +253,7 @@ export function ImportMt5Module({
 
     setSelectedFileName(file.name);
     setStatus("parsing");
+    setImportSummary(null);
     setErrorMessage("");
 
     if (!file.name.toLowerCase().endsWith(".html")) {
@@ -288,6 +299,7 @@ export function ImportMt5Module({
 
         const html = decodeFileBuffer(result);
         const parsedReport = assignAccountToReport({
+          accountId: effectiveAccountId,
           accountName: activeAccountName,
           accountType,
           accountSize: effectiveAccountSize,
@@ -307,8 +319,9 @@ export function ImportMt5Module({
           "[TNPA MT5 Import] parsed trade count",
           parsedReport.trades.length,
         );
-        writeStoredMt5Report(parsedReport);
-        setUploadedReport(parsedReport);
+        const importResult = importStoredMt5Report(parsedReport, { dryRun: isDryRun });
+        setImportSummary(importResult.summary);
+        setUploadedReport(isDryRun ? uploadedReport : importResult.report);
         setStatus("success");
       } catch (error) {
         const message =
@@ -387,6 +400,16 @@ export function ImportMt5Module({
             Select HTML File
           </button>
         </div>
+
+        <label className="mt-5 inline-flex items-center gap-3 text-sm font-medium text-slate-300">
+          <input
+            className="h-4 w-4 accent-emerald-400"
+            checked={isDryRun}
+            onChange={(event) => setIsDryRun(event.target.checked)}
+            type="checkbox"
+          />
+          Dry run only
+        </label>
 
         <div className="mt-5 grid gap-4 sm:grid-cols-3">
           <label className="block">
@@ -591,6 +614,21 @@ export function ImportMt5Module({
         {errorMessage ? (
           <div className="mt-4 rounded-md border border-rose-300/20 bg-rose-400/10 p-4 text-sm font-medium text-rose-200">
             {errorMessage}
+          </div>
+        ) : null}
+
+        {importSummary ? (
+          <div className="mt-4 rounded-md border border-emerald-300/20 bg-emerald-400/10 p-4 text-sm font-medium text-emerald-100">
+            {isDryRun ? "Dry run completed" : "Import completed"}:{" "}
+            {importSummary.new_trades} new, {importSummary.updated_trades} updated,{" "}
+            {importSummary.skipped_duplicates} skipped duplicates.
+            <span className="mt-2 block text-xs text-emerald-200/80">
+              Account ID: {importSummary.account_id} · Rows parsed:{" "}
+              {importSummary.total_rows}
+              {importSummary.errors.length
+                ? ` · Errors: ${importSummary.errors.join("; ")}`
+                : ""}
+            </span>
           </div>
         ) : null}
       </section>

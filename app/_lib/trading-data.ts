@@ -388,6 +388,8 @@ export const tradeHistory: Trade[] = sourceTradeHistory.map((trade) => ({
   ...trade,
   source: trade.source ?? "mt5",
   accountType: trade.accountType ?? importedMt5Report?.accountType ?? "prop-firm",
+  accountId: trade.accountId ?? trade.account_id ?? importedMt5Report?.accountId ?? importedMt5Report?.account_id,
+  account_id: trade.account_id ?? trade.accountId ?? importedMt5Report?.account_id ?? importedMt5Report?.accountId,
   accountName: trade.accountName ?? importedMt5Report?.accountName ?? importedMt5Report?.name ?? "FTMO",
   strategyType: trade.strategyType ?? importedMt5Report?.strategyType ?? "Intraweek",
   firmName: trade.firmName ?? importedMt5Report?.firmName ?? "FTMO",
